@@ -1,3 +1,15 @@
+import sqlite3
+import json
+from datetime import datetime
+import streamlit as st
+
+# --- CONFIGURATION ET DÉFINITIONS INITIALES ---
+TYPES_ARTICLES = ["Chemise", "Pantalon", "Veste", "Robe", "Manteau"]
+
+def get_connection():
+    # Remplacez "base_de_donnees.db" par le nom exact de votre fichier de base de données
+    return sqlite3.connect("base_de_donnees.db")
+
 # --- 1. NOUVELLE COMMANDE ---
 # Utilisation d'un formulaire nativement réinitialisable
 with st.form("form_nouvelle_commande", clear_on_submit=True):
