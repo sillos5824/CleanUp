@@ -1,9 +1,8 @@
 # --- 1. NOUVELLE COMMANDE ---
-with st.form("form_nouvelle_commande", clear_on_submit=True):
-st.header("📝 Enregistrer une nouvelle commande")
-
 # Utilisation d'un formulaire nativement réinitialisable
 with st.form("form_nouvelle_commande", clear_on_submit=True):
+    st.header("📝 Enregistrer une nouvelle commande")
+
     col1, col2 = st.columns(2)
     with col1:
         # Champ 1 : Nom du client
