@@ -2,3 +2,6 @@ streamlit
 qrcode
 pillow
 pandas
+streamlit
+folium
+streamlit-folium
