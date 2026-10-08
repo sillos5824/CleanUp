@@ -11,7 +11,7 @@ from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 
 # ============================================================
-# CONFIGURATION DE LA PAGE
+# CONFIGURATION DE LA PAGE & DESIGN CSS
 # ============================================================
 
 st.set_page_config(
@@ -19,6 +19,31 @@ st.set_page_config(
     page_icon="🧺",
     layout="wide"
 )
+
+# Injection de styles CSS personnalisés pour embellir l'interface
+st.markdown("""
+    <style>
+    /* Style général des bannières et conteneurs */
+    .stAlert {
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    /* Style des boutons principaux */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    /* Style des blocs de métriques */
+    div[data-testid="metric-container"] {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        padding: 15px;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 DB_NAME = "pressing.db"
 NUMERO_WAVE = "01 40 99 46 10"
@@ -184,19 +209,27 @@ def obtenir_nb_nouvelles_commandes():
 
 
 # ============================================================
-# NAVIGATION LATÉRALE ET RESTRICTION CLIENT
+# EN-TÊTE DÉCORATIF & NAVIGATION LATÉRALE
 # ============================================================
 
-st.title("🧺 Application de Suivi de Pressing")
+# Bannière décorative en haut de page
+st.markdown("""
+    <div style='background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 25px; border-radius: 15px; color: white; text-align: center; margin-bottom: 25px;'>
+        <h1 style='color: white; margin: 0; font-size: 30px;'>🧺 Pressing Pro - Tableau de Bord</h1>
+        <p style='margin: 8px 0 0 0; font-size: 16px; opacity: 0.9;'>Gestion intelligente des commandes, devis et paiements Wave</p>
+    </div>
+""", unsafe_allow_html=True)
 
 query_params = st.query_params
 cmd_id_url = query_params.get("cmd_id", None)
 mode_client = query_params.get("mode", None) == "client" or cmd_id_url is not None
 
-# Si le client arrive via le QR code, on restreint les menus disponibles
+st.sidebar.markdown("### 📌 Navigation")
+st.sidebar.markdown("---")
+
 if mode_client:
     options_menu = ["📱 Commande en Ligne (Client)"]
-    menu = st.sidebar.selectbox("Navigation", options_menu)
+    menu = st.sidebar.selectbox("Menu Principal", options_menu)
 else:
     nb_nouvelles = obtenir_nb_nouvelles_commandes()
     label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
@@ -213,10 +246,14 @@ else:
     ]
 
     default_menu_index = 2 if cmd_id_url else 0
-    menu = st.sidebar.selectbox("Navigation", options_menu, index=default_menu_index)
+    menu = st.sidebar.selectbox("Menu Principal", options_menu, index=default_menu_index)
 
     if nb_nouvelles > 0:
+        st.sidebar.markdown("---")
         st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
+
+st.sidebar.markdown("---")
+st.sidebar.info("💡 **Astuce :** Utilisez le générateur de QR Code pour faciliter les dépôts clients.")
 
 # ============================================================
 # 1. BOÎTE DE RÉCEPTION & NOTIFICATIONS
@@ -686,7 +723,7 @@ elif menu == "Mise à jour & Retraits":
                         date_recuperation = ?
                     WHERE id = ?
                 """, (
-                    json.JSON.dumps(nouveaux_recup) if 'json' in globals() else json.dumps(nouveaux_recup),
+                    json.dumps(nouveaux_recup),
                     nouveau_statut,
                     nouveau_statut,
                     nouveau_montant_verse,
