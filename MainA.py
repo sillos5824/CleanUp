@@ -30,11 +30,11 @@ LIEN_WAVE = f"https://wave.com/send?phone=+225{NUMERO_WAVE.replace(' ', '')}"
 # ============================================================
 
 def obtenir_base_url() -> str:
-    """Récupère l'URL de base depuis st.secrets si disponible, sinon retourne une URL par défaut."""
+    """Récupère l'URL de base exacte depuis st.secrets si disponible, sinon retourne l'URL de production."""
     try:
-        return st.secrets.get("BASE_URL", "https://votre-app-pressing.streamlit.app")
+        return st.secrets.get("BASE_URL", "https://cleanup-mlphsoybeugn4kgrnfcpaz.streamlit.app/")
     except Exception:
-        return "https://votre-app-pressing.streamlit.app"
+        return "https://cleanup-mlphsoybeugn4kgrnfcpaz.streamlit.app/"
 
 
 def get_connection():
@@ -531,7 +531,7 @@ elif menu == "📱 Commande en Ligne (Client)":
                 st.success(f"✅ Commande #{last_id} enregistrée pour {prix_estime:,.0f} FCFA !")
 
                 default_base_url = obtenir_base_url()
-                byte_qr = generer_qr_code_bytes(f"{default_base_url}/?cmd_id={last_id}")
+                byte_qr = generer_qr_code_bytes(f"{default_base_url}?cmd_id={last_id}")
 
                 st.image(byte_qr, caption=f"QR Code Suivi Commande #{last_id}", width=200)
 
@@ -571,7 +571,8 @@ elif menu == "📲 Générer QR Code":
             target_url = None
         else:
             cmd_selected = st.selectbox("Commande :", df_cmds["id"].tolist())
-            target_url = f"{url_base}/?cmd_id={cmd_selected}"
+            sep = "" if url_base.endswith("/") else "/"
+            target_url = f"{url_base}{sep}?cmd_id={cmd_selected}"
             caption_txt = f"Commande #{cmd_selected}"
             file_name_out = f"qr_cmd_{cmd_selected}.png"
             fill_color = "black"
