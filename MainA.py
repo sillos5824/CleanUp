@@ -1,17 +1,14 @@
-import json
-import sqlite3
 from datetime import datetime, timedelta
 import io
+import json
+import sqlite3
 
-import pandas as pd
-import streamlit as st
-
-# Imports pour le QR code et la carte
-import qrcode
 import folium
+import pandas as pd
+import qrcode
+import streamlit as st
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
-
 
 # ============================================================
 # CONFIGURATION DE LA PAGE
@@ -23,104 +20,122 @@ st.set_page_config(
     layout="wide"
 )
 
+DB_NAME = "pressing.db"
+NUMERO_WAVE = "01 40 99 46 10"
+LIEN_WAVE = f"https://wave.com/send?phone=+225{NUMERO_WAVE.replace(' ', '')}"
+
 
 # ============================================================
-# INITIALISATION DE LA BASE DE DONNÉES
+# GESTION SÉCURISÉE DES SECRETS & BASE DE DONNÉES
 # ============================================================
+
+def obtenir_base_url() -> str:
+    """Récupère l'URL de base depuis st.secrets si disponible, sinon retourne une URL par défaut."""
+    try:
+        return st.secrets.get("BASE_URL", "https://votre-app-pressing.streamlit.app")
+    except Exception:
+        return "https://votre-app-pressing.streamlit.app"
+
+
+def get_connection():
+    return sqlite3.connect(DB_NAME)
+
 
 def init_db():
-    conn = sqlite3.connect("pressing.db")
-    c = conn.cursor()
+    with get_connection() as conn:
+        c = conn.cursor()
 
-    # Création de la table commandes
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS commandes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date_depot TEXT,
-            nom_client TEXT,
-            telephone_client TEXT,
-            genre_client TEXT,
-            articles_deposes TEXT,
-            articles_recuperes TEXT,
-            prix_total REAL,
-            modalite_paiement TEXT,
-            montant_verse REAL,
-            statut_traitement TEXT,
-            quantite_restante_traitement INTEGER,
-            date_recuperation TEXT,
-            statut_commande TEXT,
-            dans_corbeille INTEGER DEFAULT 0,
-            latitude REAL,
-            longitude REAL,
-            adresse_livraison TEXT
-        )
-    """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS commandes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date_depot TEXT,
+                nom_client TEXT,
+                telephone_client TEXT,
+                genre_client TEXT,
+                articles_deposes TEXT,
+                articles_recuperes TEXT,
+                prix_total REAL,
+                modalite_paiement TEXT,
+                montant_verse REAL,
+                statut_traitement TEXT,
+                quantite_restante_traitement INTEGER,
+                date_recuperation TEXT,
+                statut_commande TEXT,
+                dans_corbeille INTEGER DEFAULT 0,
+                latitude REAL,
+                longitude REAL,
+                adresse_livraison TEXT,
+                type_commande TEXT DEFAULT 'Comptoir',
+                service_choisi TEXT DEFAULT 'Lavage + Repassage'
+            )
+        """)
 
-    # Vérification des colonnes existantes
-    c.execute("PRAGMA table_info(commandes)")
-    columns = [column[1] for column in c.fetchall()]
+        c.execute("PRAGMA table_info(commandes)")
+        columns = [column[1] for column in c.fetchall()]
 
-    if "telephone_client" not in columns:
-        try:
-            c.execute("ALTER TABLE commandes ADD COLUMN telephone_client TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
+        migrations = [
+            ("telephone_client", "TEXT DEFAULT ''"),
+            ("latitude", "REAL"),
+            ("longitude", "REAL"),
+            ("adresse_livraison", "TEXT"),
+            ("type_commande", "TEXT DEFAULT 'Comptoir'"),
+            ("service_choisi", "TEXT DEFAULT 'Lavage + Repassage'")
+        ]
 
-    if "latitude" not in columns:
-        try:
-            c.execute("ALTER TABLE commandes ADD COLUMN latitude REAL")
-        except sqlite3.OperationalError:
-            pass
+        for col_name, col_type in migrations:
+            if col_name not in columns:
+                try:
+                    c.execute(f"ALTER TABLE commandes ADD COLUMN {col_name} {col_type}")
+                except sqlite3.OperationalError:
+                    pass
 
-    if "longitude" not in columns:
-        try:
-            c.execute("ALTER TABLE commandes ADD COLUMN longitude REAL")
-        except sqlite3.OperationalError:
-            pass
-
-    if "adresse_livraison" not in columns:
-        try:
-            c.execute("ALTER TABLE commandes ADD COLUMN adresse_livraison TEXT")
-        except sqlite3.OperationalError:
-            pass
-
-    # Création de la table dépenses
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS depenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date_depense TEXT,
-            designation TEXT,
-            montant REAL,
-            commentaire TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS depenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date_depense TEXT,
+                designation TEXT,
+                montant REAL,
+                commentaire TEXT
+            )
+        """)
+        conn.commit()
 
 
 init_db()
 
-
-def get_connection():
-    return sqlite3.connect("pressing.db")
-
-
 # ============================================================
-# LISTES
+# CONSTANTES & TARIFS
 # ============================================================
 
-TYPES_ARTICLES = [
-    "Chemise",
-    "Pantalon",
-    "Veste / Costume",
-    "Robe",
-    "Manteau / Blouson",
-    "Chaussures (Baskets/Cuir)",
-    "Linge de lit / Couette",
-    "T-shirt / Polo",
-    "Autre"
-]
+TARIFS_ARTICLES = {
+    # 1. Vêtements Ordinaires
+    "Chemise / Polo": 300,
+    "T-shirt": 250,
+    "Pantalon / Jean": 400,
+    "Jupe": 350,
+    "Robe simple": 500,
+
+    # 2. Vêtements Spéciaux
+    "Robe de cérémonie": 1500,
+    "Robe longue / Robe en pagne": 1000,
+    "Costume complet (veste + pantalon)": 2000,
+    "Veste seule": 1000,
+    "Blazer": 1200,
+    "Boubou simple": 800,
+    "Boubou brodé / Grand boubou": 1500,
+    "Tissu pagne (2 m)": 500,
+    "Tissu pagne (3 m)": 700,
+
+    # 3. Linge de Maison
+    "Drap simple": 700,
+    "Drap 2 places": 1000,
+    "Drap + taies (set)": 1200,
+    "Housse de couette": 1500,
+    "Couette légère": 2500,
+    "Couette épaisse": 3500,
+    "Rideaux légers (la paire)": 1500,
+    "Rideaux lourds (la paire)": 2500
+}
 
 DESIGNATIONS_DEPENSES = [
     "Salaire du gérant",
@@ -130,17 +145,63 @@ DESIGNATIONS_DEPENSES = [
     "Autre dépense"
 ]
 
+SERVICES = ["Lavage + Repassage", "Lavage simple", "Repassage simple"]
+
 
 # ============================================================
-# NAVIGATION
+# FONCTIONS UTILES & CALCUL DU DEVIS
+# ============================================================
+
+def calculer_devis(articles_selectionnes: dict) -> float:
+    """Calcul automatique du prix total selon la grille tarifaire."""
+    total = 0.0
+    for article, qte in articles_selectionnes.items():
+        prix_unitaire = TARIFS_ARTICLES.get(article, 0)
+        total += prix_unitaire * qte
+    return float(total)
+
+
+def generer_qr_code_bytes(data_url: str, fill_color: str = "black") -> bytes:
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=8,
+        border=3,
+    )
+    qr.add_data(data_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color=fill_color, back_color="white").convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def obtenir_nb_nouvelles_commandes():
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM commandes WHERE statut_commande = 'En cours' AND dans_corbeille = 0")
+        return c.fetchone()[0]
+
+
+# ============================================================
+# NAVIGATION LATÉRALE ET NOTIFICATIONS
 # ============================================================
 
 st.title("🧺 Application de Suivi de Pressing")
 
+query_params = st.query_params
+cmd_id_url = query_params.get("cmd_id", None)
+
+nb_nouvelles = obtenir_nb_nouvelles_commandes()
+label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
+
+default_menu_index = 2 if cmd_id_url else 0
+
 menu = st.sidebar.selectbox(
     "Navigation",
     [
-        "Nouvelle Commande",
+        label_boite,
+        "Nouvelle Commande (Comptoir)",
         "📱 Commande en Ligne (Client)",
         "📲 Générer QR Code",
         "Mise à jour & Retraits",
@@ -148,293 +209,415 @@ menu = st.sidebar.selectbox(
         "💸 Gestion des Dépenses & Bénéfice",
         "🗑 Corbeille (Archivées > 3 mois)",
     ],
+    index=default_menu_index
 )
 
+if nb_nouvelles > 0:
+    st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
 
 # ============================================================
-# 1. NOUVELLE COMMANDE - COMPTOIR
+# 1. BOÎTE DE RÉCEPTION & NOTIFICATIONS
 # ============================================================
 
-if menu == "Nouvelle Commande":
+if "Boîte de Réception" in menu:
+    st.header("📥 Boîte de Réception des Commandes")
 
+    with get_connection() as conn:
+        df_recus = pd.read_sql_query(
+            "SELECT * FROM commandes WHERE statut_commande = 'En cours' AND dans_corbeille = 0 ORDER BY id DESC",
+            conn
+        )
+
+    if df_recus.empty:
+        st.success("🎉 Aucune nouvelle commande en attente de traitement !")
+    else:
+        st.info(f"📌 Vous avez **{len(df_recus)}** commande(s) en attente.")
+
+        filtre_type = st.radio("Filtrer par origine :", ["Toutes", "En ligne", "Comptoir"], horizontal=True)
+
+        if filtre_type != "Toutes":
+            df_recus = df_recus[df_recus["type_commande"] == filtre_type]
+
+        for _, row in df_recus.iterrows():
+            badge_type = "📱 EN LIGNE" if row["type_commande"] == "En ligne" else "🏬 COMPTOIR"
+
+            with st.expander(f"Commande #{row['id']} - {row['nom_client']} ({badge_type}) - Date: {row['date_depot']}"):
+                col_a, col_b = st.columns(2)
+
+                with col_a:
+                    st.write(f"**Client :** {row['nom_client']}")
+                    st.write(f"**Téléphone :** {row['telephone_client']}")
+                    st.write(f"**Service :** {row.get('service_choisi', 'Lavage + Repassage')}")
+                    if row["type_commande"] == "En ligne":
+                        st.write(f"**Adresse :** {row['adresse_livraison'] or 'Non précisée'}")
+
+                with col_b:
+                    st.write(f"**Prix total :** {row['prix_total']:,} FCFA")
+                    st.write(f"**Modalité :** {row['modalite_paiement']}")
+                    st.write(f"**Montant versé :** {row['montant_verse']:,} FCFA")
+
+                st.subheader("🛒 Articles")
+                try:
+                    arts = json.loads(row["articles_deposes"])
+                    for item, qte in arts.items():
+                        st.write(f"- {item} : **{qte}**")
+                except Exception:
+                    st.write(row["articles_deposes"])
+
+                btn_val, btn_term = st.columns(2)
+                with btn_val:
+                    if st.button(f"✅ Passer en traitement (N°{row['id']})", key=f"traite_{row['id']}"):
+                        with get_connection() as conn:
+                            c = conn.cursor()
+                            c.execute("UPDATE commandes SET statut_traitement = 'En cours de lavage' WHERE id = ?",
+                                      (row['id'],))
+                            conn.commit()
+                        st.toast(f"Commande #{row['id']} passée en traitement !")
+                        st.rerun()
+
+                with btn_term:
+                    if st.button(f"🏁 Marquer comme Terminée (N°{row['id']})", key=f"fin_{row['id']}"):
+                        with get_connection() as conn:
+                            c = conn.cursor()
+                            c.execute(
+                                "UPDATE commandes SET statut_commande = 'Terminées', statut_traitement = 'Terminées' WHERE id = ?",
+                                (row['id'],))
+                            conn.commit()
+                        st.toast(f"Commande #{row['id']} terminée !")
+                        st.rerun()
+
+
+# ============================================================
+# 2. NOUVELLE COMMANDE - COMPTOIR
+# ============================================================
+
+elif menu == "Nouvelle Commande (Comptoir)":
     st.header("📝 Enregistrer une nouvelle commande (Comptoir)")
 
-    with st.form("form_nouvelle_commande", clear_on_submit=True):
+    col1, col2 = st.columns(2)
 
-        col1, col2 = st.columns(2)
+    with col1:
+        nom_client = st.text_input("Nom du client *")
+        telephone_client = st.text_input("Numéro de téléphone *")
+        genre_client = st.selectbox("Genre du client", ["Homme", "Femme", "Autre"])
+        date_depot = st.date_input("Date de dépôt", datetime.now())
 
-        with col1:
-            nom_client = st.text_input("Nom du client *")
-            telephone_client = st.text_input("Numéro de téléphone *")
-            genre_client = st.selectbox("Genre du client", ["Homme", "Femme", "Autre"])
-            date_depot = st.date_input("Date de dépôt", datetime.now())
+    with col2:
+        service_choisi = st.selectbox("Type de Service *", SERVICES)
+        modalite = st.radio("Modalité de paiement *", ["Soldé", "Acompte", "Paiement Wave"])
 
-        with col2:
-            prix_total = st.number_input("Prix total (€ ou FCFA) *", min_value=0.0, step=100.0)
-            modalite = st.radio("Modalité de paiement *", ["Soldé", "Acompte"])
-            montant_verse_input = st.number_input("Montant versé (Acompte si applicable)", min_value=0.0, step=100.0)
+    st.subheader("🛒 Sélection des articles *")
+    articles_selectionnes = {}
+    cols = st.columns(3)
 
-        st.subheader("🛒 Sélection des articles *")
+    for idx, (item, prix) in enumerate(TARIFS_ARTICLES.items()):
+        with cols[idx % 3]:
+            qte = st.number_input(f"{item} ({prix} F)", min_value=0, step=1, key=f"depot_{item}")
+            if qte > 0:
+                articles_selectionnes[item] = qte
 
-        articles_selectionnes = {}
-        cols = st.columns(3)
+    total_articles = sum(articles_selectionnes.values())
+    prix_calcule = calculer_devis(articles_selectionnes)
 
-        for idx, item in enumerate(TYPES_ARTICLES):
-            with cols[idx % 3]:
-                qte = st.number_input(f"{item}", min_value=0, step=1, key=f"depot_{item}")
-                if qte > 0:
-                    articles_selectionnes[item] = qte
+    st.markdown("---")
+    st.subheader("💰 Devis Automatique")
+    st.info(
+        f" Total articles : **{total_articles}** | Service : **{service_choisi}**\n\n"
+        f"👉 **Montant total calculé : {prix_calcule:,.0f} FCFA**"
+    )
 
-        submitted = st.form_submit_button("Valider la commande", type="primary")
+    if modalite == "Paiement Wave":
+        st.success(f"📱 **Numéro Wave pour le règlement : {NUMERO_WAVE}**")
+        qr_wave = generer_qr_code_bytes(LIEN_WAVE, fill_color="#1DC43C")
+        st.image(qr_wave, caption="Scannez pour payer par Wave", width=180)
 
-    if submitted:
-        total_articles = sum(articles_selectionnes.values())
-        montant_verse = prix_total if modalite == "Soldé" else montant_verse_input
+    montant_verse_input = st.number_input(
+        "Montant versé par le client (FCFA)",
+        min_value=0.0,
+        max_value=float(prix_calcule) if prix_calcule > 0 else 0.0,
+        value=float(prix_calcule) if modalite in ["Soldé", "Paiement Wave"] else 0.0,
+        step=100.0
+    )
+
+    if st.button("Valider la commande", type="primary"):
+        montant_verse = prix_calcule if modalite in ["Soldé", "Paiement Wave"] else montant_verse_input
 
         if not nom_client.strip():
-            st.error("❌ Le champ 'Nom du client' est obligatoire.")
+            st.error("❌ Le nom du client est obligatoire.")
         elif not telephone_client.strip():
-            st.error("❌ Le champ 'Numéro de téléphone' est obligatoire.")
-        elif prix_total <= 0:
-            st.error("❌ Le 'Prix total' doit être supérieur à 0.")
-        elif modalite == "Acompte" and montant_verse <= 0:
-            st.error("❌ Veuillez indiquer un montant d'acompte supérieur à 0.")
+            st.error("❌ Le numéro de téléphone est obligatoire.")
         elif total_articles == 0:
             st.error("❌ Veuillez sélectionner au moins un article.")
+        elif modalite == "Acompte" and montant_verse <= 0:
+            st.error("❌ Indiquez un montant d'acompte valide.")
         else:
             articles_recup_initial = {item: 0 for item in articles_selectionnes}
 
-            conn = get_connection()
-            c = conn.cursor()
+            with get_connection() as conn:
+                c = conn.cursor()
+                c.execute("""
+                    INSERT INTO commandes (
+                        date_depot, nom_client, telephone_client, genre_client,
+                        articles_deposes, articles_recuperes, prix_total, modalite_paiement,
+                        montant_verse, statut_traitement, quantite_restante_traitement,
+                        date_recuperation, statut_commande, dans_corbeille, latitude,
+                        longitude, adresse_livraison, type_commande, service_choisi
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, 'Comptoir', ?)
+                """, (
+                    str(date_depot), nom_client, telephone_client, genre_client,
+                    json.dumps(articles_selectionnes), json.dumps(articles_recup_initial),
+                    prix_calcule, modalite, montant_verse, "En cours", total_articles,
+                    "-", "En cours", service_choisi
+                ))
+                new_id = c.lastrowid
+                conn.commit()
 
-            c.execute("""
-                INSERT INTO commandes (
-                    date_depot, nom_client, telephone_client, genre_client,
-                    articles_deposes, articles_recuperes, prix_total, modalite_paiement,
-                    montant_verse, statut_traitement, quantite_restante_traitement,
-                    date_recuperation, statut_commande, dans_corbeille, latitude,
-                    longitude, adresse_livraison
-                )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL
-                )
-            """, (
-                str(date_depot),
-                nom_client,
-                telephone_client,
-                genre_client,
-                json.dumps(articles_selectionnes),
-                json.dumps(articles_recup_initial),
-                prix_total,
-                modalite,
-                montant_verse,
-                "En cours",
-                total_articles,
-                "-",
-                "En cours"
-            ))
-
-            conn.commit()
-            conn.close()
-
-            st.success("✅ Commande enregistrée avec succès !")
+            st.toast(f"🔔 Commande #{new_id} enregistrée !", icon="📥")
+            st.success(f"✅ Commande #{new_id} validée pour un total de {prix_calcule:,.0f} FCFA.")
             st.rerun()
 
 
 # ============================================================
-# 2. COMMANDE EN LIGNE
+# 3. COMMANDE EN LIGNE (CLIENT)
 # ============================================================
 
 elif menu == "📱 Commande en Ligne (Client)":
+    if cmd_id_url:
+        st.header(f"🔍 Visualisation de la Commande #{cmd_id_url}")
 
-    st.header("📱 Passation de commande en ligne")
+        with get_connection() as conn:
+            df_view = pd.read_sql_query("SELECT * FROM commandes WHERE id = ?", conn, params=(cmd_id_url,))
 
-    st.info("Sélectionnez vos articles, précisez votre adresse et indiquez votre position sur la carte.")
+        if not df_view.empty:
+            cmd = df_view.iloc[0]
+            st.success(f"✅ Statut actuel de la commande : **{cmd['statut_commande']}**")
 
-    if "user_lat" not in st.session_state:
-        st.session_state.user_lat = 5.3599517
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write(f"**Client :** {cmd['nom_client']}")
+                st.write(f"**Téléphone :** {cmd['telephone_client']}")
+                st.write(f"**Date :** {cmd['date_depot']}")
+            with c2:
+                service_val = cmd.get('service_choisi', 'Lavage + Repassage') if hasattr(cmd,
+                                                                                         'get') else 'Lavage + Repassage'
+                st.write(f"**Service :** {service_val}")
+                st.write(f"**Total :** {cmd['prix_total']:,} FCFA")
+                st.write(f"**Versé :** {cmd['montant_verse']:,} FCFA")
 
-    if "user_lng" not in st.session_state:
-        st.session_state.user_lng = -4.0082563
+            st.subheader("📦 Articles commandés")
+            try:
+                articles_dict = json.loads(cmd["articles_deposes"])
+                for art, qte in articles_dict.items():
+                    st.write(f"- **{art}** : {qte}")
+            except Exception:
+                st.write(cmd["articles_deposes"])
 
-    st.subheader("📍 1. Votre Position de Livraison")
+            st.markdown("---")
+            st.subheader("💳 Règlement par Wave")
+            st.info(f"Numéro Wave du pressing : **{NUMERO_WAVE}**")
+            byte_wave = generer_qr_code_bytes(LIEN_WAVE, fill_color="#1DC43C")
+            st.image(byte_wave, caption="Scannez pour effectuer le paiement Wave", width=200)
 
-    col_map1, col_map2 = st.columns([1, 2])
+            if st.button("⬅️ Passer une nouvelle commande"):
+                st.query_params.clear()
+                st.rerun()
+        else:
+            st.error("❌ Commande introuvable.")
 
-    with col_map1:
-        if st.button("🌐 Obtenir ma position GPS automatique"):
-            loc = get_geolocation()
-            if loc and "coords" in loc:
-                st.session_state.user_lat = loc["coords"]["latitude"]
-                st.session_state.user_lng = loc["coords"]["longitude"]
-                st.success("✅ Position GPS mise à jour !")
+    else:
+        st.header("📱 Passation de commande en ligne")
 
-        adresse_saisie = st.text_area(
-            "Précision d'adresse / Repères (Ex: Rue 12, portail vert face pharmacie)",
-            key="adresse_input"
-        )
+        if "user_lat" not in st.session_state:
+            st.session_state.user_lat = 5.3599517
+        if "user_lng" not in st.session_state:
+            st.session_state.user_lng = -4.0082563
 
-    with col_map2:
-        m = folium.Map(
-            location=[st.session_state.user_lat, st.session_state.user_lng],
-            zoom_start=14
-        )
+        st.subheader("📍 1. Localisation")
+        col_map1, col_map2 = st.columns([1, 2])
 
-        folium.Marker(
-            [st.session_state.user_lat, st.session_state.user_lng],
-            popup="Lieu de livraison",
-            tooltip="Position de livraison"
-        ).add_to(m)
+        with col_map1:
+            if st.button("🌐 Obtenir ma position GPS"):
+                loc = get_geolocation()
+                if loc and "coords" in loc:
+                    st.session_state.user_lat = loc["coords"]["latitude"]
+                    st.session_state.user_lng = loc["coords"]["longitude"]
+                    st.success("✅ Position mise à jour !")
 
-        map_data = st_folium(m, height=280, width="100%", key="map_client")
+            adresse_saisie = st.text_area("Repère / Précision d'adresse")
 
-        if map_data and map_data.get("last_clicked"):
-            st.session_state.user_lat = map_data["last_clicked"]["lat"]
-            st.session_state.user_lng = map_data["last_clicked"]["lng"]
+        with col_map2:
+            m = folium.Map(location=[st.session_state.user_lat, st.session_state.user_lng], zoom_start=14)
+            folium.Marker([st.session_state.user_lat, st.session_state.user_lng]).add_to(m)
+            map_data = st_folium(m, height=250, width="100%", key="map_client")
 
-    st.write(
-        f"📌 **Coordonnées sélectionnées :** "
-        f"{st.session_state.user_lat:.5f}, {st.session_state.user_lng:.5f}"
-    )
+            if map_data and map_data.get("last_clicked"):
+                st.session_state.user_lat = map_data["last_clicked"]["lat"]
+                st.session_state.user_lng = map_data["last_clicked"]["lng"]
 
-    st.markdown("---")
-
-    st.subheader("📋 2. Vos informations et articles")
-
-    with st.form("form_client_online", clear_on_submit=True):
+        st.markdown("---")
+        st.subheader("📋 2. Informations & Sélection")
 
         c1, c2 = st.columns(2)
-
         with c1:
             nom_client = st.text_input("Nom & Prénom *")
-            telephone_client = st.text_input("Numéro de téléphone (WhatsApp / Appel) *")
-
+            telephone_client = st.text_input("Téléphone *")
         with c2:
             genre_client = st.selectbox("Genre", ["Homme", "Femme", "Autre"])
+            service_choisi = st.selectbox("Prestation souhaitée *", SERVICES)
 
-        st.subheader("🛒 Sélection des articles à faire nettoyer")
-
+        st.subheader("🛒 Sélection des articles")
         articles_client = {}
         cols = st.columns(3)
 
-        for idx, item in enumerate(TYPES_ARTICLES):
+        for idx, (item, prix) in enumerate(TARIFS_ARTICLES.items()):
             with cols[idx % 3]:
-                qte = st.number_input(f"{item}", min_value=0, step=1, key=f"online_{item}")
+                qte = st.number_input(f"{item} ({prix} F)", min_value=0, step=1, key=f"online_{item}")
                 if qte > 0:
                     articles_client[item] = qte
 
-        submit_online = st.form_submit_button("Envoyer ma commande", type="primary")
-
-    if submit_online:
-
         total_art = sum(articles_client.values())
+        prix_estime = calculer_devis(articles_client)
 
-        if not nom_client.strip():
-            st.error("❌ Le nom est obligatoire.")
-        elif not telephone_client.strip():
-            st.error("❌ Le numéro de téléphone est obligatoire.")
-        elif total_art == 0:
-            st.error("❌ Veuillez sélectionner au moins un article.")
-        else:
-            conn = get_connection()
-            c = conn.cursor()
+        if total_art > 0:
+            st.info(f"💡 **Devis estimé : {prix_estime:,.0f} FCFA** ({total_art} article(s) - {service_choisi})")
 
-            c.execute("""
-                INSERT INTO commandes (
-                    date_depot, nom_client, telephone_client, genre_client,
-                    articles_deposes, articles_recuperes, prix_total, modalite_paiement,
-                    montant_verse, statut_traitement, quantite_restante_traitement,
-                    date_recuperation, statut_commande, dans_corbeille, latitude,
-                    longitude, adresse_livraison
-                )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?
-                )
-            """, (
-                datetime.now().strftime("%Y-%m-%d"),
-                nom_client,
-                telephone_client,
-                genre_client,
-                json.dumps(articles_client),
-                json.dumps({k: 0 for k in articles_client}),
-                0.0,
-                "À définir au ramassage",
-                0.0,
-                "En cours",
-                total_art,
-                "-",
-                "En cours",
-                st.session_state.user_lat,
-                st.session_state.user_lng,
-                adresse_saisie
-            ))
+        st.markdown("---")
+        st.subheader("💳 Paiement direct via Wave")
+        st.success(f"**Numéro Wave pour vos paiements : {NUMERO_WAVE}**")
 
-            conn.commit()
-            conn.close()
+        c_qr1, c_qr2 = st.columns([1, 2])
+        with c_qr1:
+            byte_qr_wave = generer_qr_code_bytes(LIEN_WAVE, fill_color="#1DC43C")
+            st.image(byte_qr_wave, caption="Scannez pour régler via l'application Wave", width=180)
+        with c_qr2:
+            st.markdown(
+                f"""
+                1. Effectuez votre transfert Wave vers le **{NUMERO_WAVE}**.
+                2. Cliquez sur **Envoyer la commande** ci-dessous après validation.
+                """
+            )
+            st.markdown(f"[📱 Ouvrir directement Wave]({LIEN_WAVE})")
 
-            st.success("✅ Votre demande a bien été enregistrée ! Notre livreur vous recontactera.")
+        if st.button("Envoyer la commande", type="primary"):
+            if not nom_client.strip():
+                st.error("❌ Le nom est obligatoire.")
+            elif not telephone_client.strip():
+                st.error("❌ Le téléphone est obligatoire.")
+            elif total_art == 0:
+                st.error("❌ Sélectionnez au moins un article.")
+            else:
+                with get_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("""
+                        INSERT INTO commandes (
+                            date_depot, nom_client, telephone_client, genre_client,
+                            articles_deposes, articles_recuperes, prix_total, modalite_paiement,
+                            montant_verse, statut_traitement, quantite_restante_traitement,
+                            date_recuperation, statut_commande, dans_corbeille, latitude,
+                            longitude, adresse_livraison, type_commande, service_choisi
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'Wave Mobile Money', 0.0, 'En cours', ?, '-', 'En cours', 0, ?, ?, ?, 'En ligne', ?)
+                    """, (
+                        datetime.now().strftime("%Y-%m-%d"), nom_client, telephone_client,
+                        genre_client, json.dumps(articles_client),
+                        json.dumps({k: 0 for k in articles_client}), prix_estime,
+                        total_art, st.session_state.user_lat, st.session_state.user_lng,
+                        adresse_saisie, service_choisi
+                    ))
+                    last_id = c.lastrowid
+                    conn.commit()
+
+                st.success(f"✅ Commande #{last_id} enregistrée pour {prix_estime:,.0f} FCFA !")
+
+                default_base_url = obtenir_base_url()
+                byte_qr = generer_qr_code_bytes(f"{default_base_url}/?cmd_id={last_id}")
+
+                st.image(byte_qr, caption=f"QR Code Suivi Commande #{last_id}", width=200)
 
 
 # ============================================================
-# 3. GÉNÉRATEUR DE QR CODE
+# 4. GÉNÉRATEUR DE QR CODE MULTI-USAGE
 # ============================================================
 
 elif menu == "📲 Générer QR Code":
+    st.header("📲 Générateur de QR Code")
 
-    st.header("📲 QR Code de commande en ligne")
-
-    st.write("Imprimez ce QR Code pour vos clients.")
-
-    url_app = st.text_input(
-        "Lien de votre application web :",
-        value="https://votre-app-pressing.streamlit.app"
+    type_qr = st.radio(
+        "Objectif :",
+        ["Nouveau formulaire de commande", "Commande existante", f"Paiement Wave ({NUMERO_WAVE})"],
+        horizontal=True
     )
 
-    if st.button("Générer le QR Code"):
+    default_base_url = obtenir_base_url()
+    url_base = st.text_input("Lien Streamlit :", value=default_base_url)
 
-        img = qrcode.make(url_app)
+    if type_qr == "Nouveau formulaire de commande":
+        target_url = url_base
+        caption_txt = "Scannez pour commander en ligne"
+        file_name_out = "qr_nouvelle_commande.png"
+        fill_color = "black"
+    elif type_qr == f"Paiement Wave ({NUMERO_WAVE})":
+        target_url = LIEN_WAVE
+        caption_txt = f"Paiement Wave - {NUMERO_WAVE}"
+        file_name_out = "qr_paiement_wave.png"
+        fill_color = "#1DC43C"
+    else:
+        with get_connection() as conn:
+            df_cmds = pd.read_sql_query("SELECT id, nom_client FROM commandes ORDER BY id DESC", conn)
 
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        byte_im = buf.getvalue()
+        if df_cmds.empty:
+            st.warning("Aucune commande enregistrée.")
+            target_url = None
+        else:
+            cmd_selected = st.selectbox("Commande :", df_cmds["id"].tolist())
+            target_url = f"{url_base}/?cmd_id={cmd_selected}"
+            caption_txt = f"Commande #{cmd_selected}"
+            file_name_out = f"qr_cmd_{cmd_selected}.png"
+            fill_color = "black"
 
-        st.image(byte_im, caption="Scannez pour commander en ligne", width=250)
-
-        st.download_button(
-            label="💾 Télécharger le QR Code (PNG)",
-            data=byte_im,
-            file_name="qr_code_pressing.png",
-            mime="image/png"
-        )
+    if target_url and st.button("Générer", type="primary"):
+        byte_im = generer_qr_code_bytes(target_url, fill_color=fill_color)
+        st.image(byte_im, caption=caption_txt, width=220)
+        st.download_button("💾 Télécharger (PNG)", data=byte_im, file_name=file_name_out, mime="image/png")
 
 
 # ============================================================
-# 4. MISE À JOUR & RETRAITS
+# 5. MISE À JOUR & RETRAITS
 # ============================================================
 
 elif menu == "Mise à jour & Retraits":
-
     st.header("📦 Mise à jour & Retraits des articles")
 
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM commandes WHERE dans_corbeille = 0 ORDER BY id DESC", conn)
-    conn.close()
+    with get_connection() as conn:
+        df = pd.read_sql_query("SELECT * FROM commandes WHERE dans_corbeille = 0 ORDER BY id DESC", conn)
 
     if df.empty:
         st.info("Aucune commande disponible.")
     else:
-        options_commandes = {
-            row["id"]: f"N°{row['id']} - {row['nom_client']} ({row['telephone_client']}) - Statut: {row['statut_commande']}"
-            for _, row in df.iterrows()
-        }
-
         commande_id = st.selectbox(
-            "Sélectionner une commande",
-            options=list(options_commandes.keys()),
-            format_func=lambda x: options_commandes[x]
+            "Sélectionner une commande :",
+            df["id"].tolist(),
+            format_func=lambda x: f"Commande #{x} - {df[df['id'] == x]['nom_client'].values[0]}"
         )
-
         commande = df[df["id"] == commande_id].iloc[0]
+
+        prix_tot = float(commande['prix_total'] or 0.0)
+        montant_v = float(commande['montant_verse'] or 0.0)
+        reste_a_payer = max(0.0, prix_tot - montant_v)
+
+        st.markdown("---")
+        st.markdown(f"👤 **Client :** {commande['nom_client']}")
+        st.markdown(f"📞 **Téléphone :** {commande['telephone_client']}")
+        st.markdown(f"📅 **Date dépôt :** {commande['date_depot']}")
+        st.markdown(f"💳 **Prix Total :** {prix_tot:,.0f} FCFA")
+        st.markdown(f"💵 **Déjà versé :** {montant_v:,.0f} FCFA")
+        st.markdown(f"📌 **Reste à payer :** :green[{reste_a_payer:,.0f} FCFA]")
+        st.markdown(f"🔄 **Statut Commande :** `:green[{commande['statut_commande']}]`")
+        st.markdown(f"🏷️ **Modalité initiale :** {commande['modalite_paiement']}")
+
+        st.markdown("---")
+        st.subheader("🧺 1. Vérification des articles retirés")
 
         try:
             articles_deposes = json.loads(commande["articles_deposes"])
@@ -446,164 +629,102 @@ elif menu == "Mise à jour & Retraits":
         except Exception:
             articles_recuperes = {k: 0 for k in articles_deposes}
 
-        prix_total = float(commande["prix_total"])
-        montant_verse = float(commande["montant_verse"])
-        reste_a_payer = max(0.0, prix_total - montant_verse)
+        nouveaux_recup = {}
+        cols_art = st.columns(3)
+
+        for idx, (item, qte_dep) in enumerate(articles_deposes.items()):
+            qte_deja_recup = articles_recuperes.get(item, 0)
+            with cols_art[idx % 3]:
+                st.write(f"**{item}** (Déposés: {qte_dep} | Retirés: {qte_deja_recup})")
+                nouveaux_recup[item] = st.number_input(
+                    f"Nouveaux retirés ({item})",
+                    min_value=qte_deja_recup,
+                    max_value=qte_dep,
+                    value=qte_deja_recup,
+                    key=f"retrait_{commande_id}_{item}"
+                )
 
         st.markdown("---")
+        st.subheader("⚙️ 2. Mettre à jour le statut et le paiement")
 
-        col_info1, col_info2, col_info3 = st.columns(3)
-        with col_info1:
-            st.markdown(f"**👤 Client :** {commande['nom_client']}")
-            st.markdown(f"**📞 Téléphone :** {commande['telephone_client']}")
-            st.markdown(f"**📅 Date dépôt :** {commande['date_depot']}")
-        with col_info2:
-            st.markdown(f"**💳 Prix Total :** {prix_total:,.0f} FCFA / €")
-            st.markdown(f"**💵 Déjà versé :** {montant_verse:,.0f} FCFA / €")
-            st.markdown(f"**📌 Reste à payer :** :{'red' if reste_a_payer > 0 else 'green'}[**{reste_a_payer:,.0f} FCFA / €**]")
-        with col_info3:
-            st.markdown(f"**🔄 Statut Commande :** `{commande['statut_commande']}`")
-            st.markdown(f"**🏷️ Modalité initiale :** {commande['modalite_paiement']}")
+        col_st1, col_st2 = st.columns(2)
+        with col_st1:
+            nouveau_statut = st.selectbox(
+                "Nouveau statut de la commande",
+                ["En cours", "Terminées"],
+                index=0 if commande["statut_commande"] == "En cours" else 1
+            )
+        with col_st2:
+            nouveau_montant_verse = st.number_input(
+                "Nouveau montant total versé",
+                min_value=montant_v,
+                value=montant_v,
+                step=100.0
+            )
 
-        st.markdown("---")
+        if st.button("💾 Enregistrer les modifications de retrait", type="primary"):
+            tot_dep = sum(articles_deposes.values())
+            tot_rec = sum(nouveaux_recup.values())
+            quantite_restante = max(0, tot_dep - tot_rec)
 
-        with st.form("form_mise_a_jour_retrait"):
-            st.subheader("🧺 1. Vérification des articles retirés")
-            st.caption("Ajustez la quantité d'articles rendus au client lors du retrait.")
+            date_retrait_str = datetime.now().strftime("%Y-%m-%d %H:%M") if quantite_restante == 0 else commande[
+                "date_recuperation"]
 
-            nouveaux_recuperes = {}
-            cols_art = st.columns(3)
+            with get_connection() as conn:
+                c = conn.cursor()
+                c.execute("""
+                    UPDATE commandes
+                    SET articles_recuperes = ?,
+                        statut_commande = ?,
+                        statut_traitement = ?,
+                        montant_verse = ?,
+                        quantite_restante_traitement = ?,
+                        date_recuperation = ?
+                    WHERE id = ?
+                """, (
+                    json.dumps(nouveaux_recup),
+                    nouveau_statut,
+                    nouveau_statut,
+                    nouveau_montant_verse,
+                    quantite_restante,
+                    date_retrait_str,
+                    commande_id
+                ))
+                conn.commit()
 
-            total_depose = sum(articles_deposes.values())
-
-            for idx, (item, qte_deposee) in enumerate(articles_deposes.items()):
-                qte_deja_recup = articles_recuperes.get(item, 0)
-                with cols_art[idx % 3]:
-                    qte_rendue = st.number_input(
-                        f"{item} (Déposé: {qte_deposee})",
-                        min_value=qte_deja_recup,
-                        max_value=qte_deposee,
-                        value=qte_deja_recup,
-                        key=f"retrait_{commande_id}_{item}"
-                    )
-                    nouveaux_recuperes[item] = qte_rendue
-
-            st.markdown("---")
-            st.subheader("💰 2. Gestion du paiement & Solde")
-
-            if prix_total == 0.0 and commande["modalite_paiement"] == "À définir au ramassage":
-                st.warning("⚠️ Cette commande en ligne n'a pas encore de prix fixe.")
-                nouveau_prix = st.number_input("Définir le prix total", min_value=0.0, step=100.0)
-                montant_saisie_solde = st.number_input("Montant à encaisser maintenant", min_value=0.0, step=100.0)
-                valider_solde = st.checkbox("Marquer la commande comme intégralement SOLDÉE", value=True)
-            else:
-                nouveau_prix = prix_total
-                if reste_a_payer > 0:
-                    st.info(f"Reste à régler : **{reste_a_payer:,.0f}**")
-                    valider_solde = st.checkbox("💰 Solder le compte au retrait (Encaissement du reste)", value=True)
-                    montant_supplementaire = st.number_input(
-                        "Montant à encaisser lors de ce retrait",
-                        min_value=0.0,
-                        max_value=reste_a_payer,
-                        value=reste_a_payer if valider_solde else 0.0,
-                        step=100.0
-                    )
-                else:
-                    st.success("✅ Cette commande est déjà entièrement soldée.")
-                    valider_solde = True
-                    montant_supplementaire = 0.0
-
-            st.markdown("---")
-            st.subheader("⚙️ 3. Statut du traitement & Récupération")
-
-            statut_options = ["En cours", "Terminées"]
-            index_statut = statut_options.index(commande["statut_commande"]) if commande["statut_commande"] in statut_options else 0
-            nouveau_statut = st.selectbox("Statut de la commande", statut_options, index=index_statut)
-
-            btn_enregistrer = st.form_submit_button("💾 Enregistrer la mise à jour / Retrait", type="primary")
-
-        if btn_enregistrer:
-            total_recup = sum(nouveaux_recuperes.values())
-            quantite_restante = total_depose - total_recup
-
-            if prix_total == 0.0 and commande["modalite_paiement"] == "À définir au ramassage":
-                prix_total_final = nouveau_prix
-                nouveau_montant_verse = montant_saisie_solde
-                modalite_finale = "Soldé" if valider_solde or (nouveau_prix > 0 and nouveau_montant_verse >= nouveau_prix) else "Acompte"
-            else:
-                prix_total_final = prix_total
-                nouveau_montant_verse = montant_verse + montant_supplementaire
-                modalite_finale = "Soldé" if (valider_solde or nouveau_montant_verse >= prix_total_final) else "Acompte"
-
-            if quantite_restante == 0 and nouveau_montant_verse >= prix_total_final:
-                nouveau_statut = "Terminées"
-                date_recup_effective = datetime.now().strftime("%Y-%m-%d %H:%M")
-            else:
-                date_recup_effective = commande["date_recuperation"]
-
-            conn = get_connection()
-            c = conn.cursor()
-
-            c.execute("""
-                UPDATE commandes
-                SET articles_recuperes = ?,
-                    prix_total = ?,
-                    montant_verse = ?,
-                    modalite_paiement = ?,
-                    quantite_restante_traitement = ?,
-                    statut_commande = ?,
-                    statut_traitement = ?,
-                    date_recuperation = ?
-                WHERE id = ?
-            """, (
-                json.dumps(nouveaux_recuperes),
-                prix_total_final,
-                nouveau_montant_verse,
-                modalite_finale,
-                quantite_restante,
-                nouveau_statut,
-                nouveau_statut,
-                date_recup_effective,
-                commande_id
-            ))
-
-            conn.commit()
-            conn.close()
-
-            st.success("✅ Retrait et solde mis à jour avec succès !")
+            st.toast("✅ Retrait et mise à jour enregistrés !", icon="📦")
+            st.success("✅ Les données de retrait ont été mises à jour avec succès.")
             st.rerun()
 
 
 # ============================================================
-# 5. HISTORIQUE DES COMMANDES
+# 6. HISTORIQUE DES COMMANDES (AVEC RÉINITIALISATION)
 # ============================================================
 
 elif menu == "Historique des Commandes":
-
     st.header("📊 Historique des Commandes Actives")
 
-    filtre = st.radio("Filtrer par statut", ["Toutes", "En cours", "Terminées"], horizontal=True)
+    col_filtre, col_reset = st.columns([3, 1])
+    with col_filtre:
+        filtre = st.radio("Filtrer par statut", ["Toutes", "En cours", "Terminées"], horizontal=True)
+    with col_reset:
+        st.write("")  # Espacement
+        if st.button("🔄 Actualiser", use_container_width=True):
+            st.rerun()
 
-    conn = get_connection()
-
-    if filtre == "Toutes":
-        df = pd.read_sql_query(
-            "SELECT * FROM commandes WHERE dans_corbeille = 0 ORDER BY id DESC",
-            conn
-        )
-    else:
-        df = pd.read_sql_query(
-            "SELECT * FROM commandes WHERE statut_commande = ? AND dans_corbeille = 0 ORDER BY id DESC",
-            conn,
-            params=(filtre,)
-        )
-
-    conn.close()
+    with get_connection() as conn:
+        if filtre == "Toutes":
+            df = pd.read_sql_query("SELECT * FROM commandes WHERE dans_corbeille = 0 ORDER BY id DESC", conn)
+        else:
+            df = pd.read_sql_query(
+                "SELECT * FROM commandes WHERE statut_commande = ? AND dans_corbeille = 0 ORDER BY id DESC", conn,
+                params=(filtre,))
 
     if df.empty:
         st.info("Aucune commande enregistrée.")
     else:
         df_display = df.copy()
+
 
         def format_deposes(val):
             try:
@@ -612,146 +733,103 @@ elif menu == "Historique des Commandes":
             except Exception:
                 return str(val)
 
+
         df_display["Articles Déposés"] = df_display["articles_deposes"].apply(format_deposes)
 
-        if "adresse_livraison" in df_display.columns:
-            df_display["adresse_livraison"] = df_display["adresse_livraison"].fillna("-")
-
         cols_to_show = [
-            "id", "date_depot", "nom_client", "telephone_client",
-            "Articles Déposés", "prix_total", "modalite_paiement",
-            "statut_commande", "adresse_livraison", "latitude", "longitude"
+            "id", "date_depot", "type_commande", "nom_client", "telephone_client",
+            "service_choisi", "Articles Déposés", "prix_total", "modalite_paiement",
+            "statut_commande"
         ]
-
         cols_to_show = [col for col in cols_to_show if col in df_display.columns]
 
-        st.dataframe(df_display[cols_to_show], width="stretch")
+        st.dataframe(df_display[cols_to_show], use_container_width=True)
 
-        st.markdown("---")
-        st.subheader("🗺 Localisation de livraison des clients en ligne")
+    st.markdown("---")
+    st.subheader("⚠️ Réinitialisation globale de l'historique")
 
-        commandes_gps = df_display[df_display["latitude"].notnull()]
+    with st.expander("💣 Zone de danger : Supprimer l'historique complet"):
+        st.warning(
+            "⚠️ Cette action supprimera **définitivement** toutes les commandes de la base de données. Cette opération est irréversible.")
 
-        if not commandes_gps.empty:
-            cmd_sel_id = st.selectbox(
-                "Sélectionner une commande avec position GPS :",
-                commandes_gps["id"].tolist()
-            )
+        confirmation = st.checkbox("Je comprends que toutes les commandes seront effacées définitivement.")
 
-            row_sel = commandes_gps[commandes_gps["id"] == cmd_sel_id].iloc[0]
-
-            lat = row_sel["latitude"]
-            lng = row_sel["longitude"]
-
-            gmaps_url = f"https://www.google.com/maps?q={lat},{lng}"
-
-            col_det1, col_det2 = st.columns(2)
-
-            with col_det1:
-                st.write(f"**Client :** {row_sel['nom_client']} ({row_sel['telephone_client']})")
-                st.write(f"**Repère / Adresse :** {row_sel['adresse_livraison']}")
-                st.write(f"**Coordonnées :** {lat:.5f}, {lng:.5f}")
-                st.markdown(f"👉 [Ouvrir le trajet dans Google Maps]({gmaps_url})")
-
-            with col_det2:
-                m_view = folium.Map(location=[lat, lng], zoom_start=15)
-                folium.Marker([lat, lng], popup=f"Commande #{cmd_sel_id}", tooltip=row_sel["nom_client"]).add_to(m_view)
-                st_folium(m_view, height=220, width="100%", key=f"view_map_{cmd_sel_id}")
-        else:
-            st.info("Aucune commande avec coordonnées GPS pour le moment.")
+        if st.button("🔥 Réinitialiser toutes les commandes", type="primary", disabled=not confirmation):
+            with get_connection() as conn:
+                c = conn.cursor()
+                c.execute("DELETE FROM commandes")
+                c.execute("DELETE FROM sqlite_sequence WHERE name='commandes'")
+                conn.commit()
+            st.toast("✅ Historique entièrement réinitialisé !")
+            st.success("Toutes les commandes ont été supprimées.")
+            st.rerun()
 
 
 # ============================================================
-# 6. DÉPENSES & BÉNÉFICE
+# 7. DÉPENSES & BÉNÉFICE
 # ============================================================
 
 elif menu == "💸 Gestion des Dépenses & Bénéfice":
-
     st.header("💸 Gestion des Dépenses & Bénéfice")
 
-    st.subheader("➕ Ajouter une dépense")
-
     with st.form("form_depense"):
-        date_depense = st.date_input("Date de la dépense", datetime.now())
+        date_depense = st.date_input("Date", datetime.now())
         designation = st.selectbox("Désignation", DESIGNATIONS_DEPENSES)
         montant_depense = st.number_input("Montant", min_value=0.0, step=100.0)
         commentaire = st.text_area("Commentaire")
-        ajouter_depense = st.form_submit_button("Ajouter la dépense")
+        ajouter_depense = st.form_submit_button("Ajouter")
 
-    if ajouter_depense:
-        if montant_depense <= 0:
-            st.error("❌ Le montant doit être supérieur à 0.")
-        else:
-            conn = get_connection()
+    if ajouter_depense and montant_depense > 0:
+        with get_connection() as conn:
             c = conn.cursor()
-
-            c.execute("""
-                INSERT INTO depenses (date_depense, designation, montant, commentaire)
-                VALUES (?, ?, ?, ?)
-            """, (str(date_depense), designation, montant_depense, commentaire))
-
+            c.execute(
+                "INSERT INTO depenses (date_depense, designation, montant, commentaire) VALUES (?, ?, ?, ?)",
+                (str(date_depense), designation, montant_depense, commentaire)
+            )
             conn.commit()
-            conn.close()
+        st.success("Dépense enregistrée.")
+        st.rerun()
 
-            st.success("✅ Dépense enregistrée.")
-            st.rerun()
-
-    conn = get_connection()
-
-    total_commandes = pd.read_sql_query(
-        "SELECT COALESCE(SUM(prix_total), 0) AS total FROM commandes WHERE dans_corbeille = 0",
-        conn
-    ).iloc[0]["total"]
-
-    total_depenses = pd.read_sql_query(
-        "SELECT COALESCE(SUM(montant), 0) AS total FROM depenses",
-        conn
-    ).iloc[0]["total"]
-
-    conn.close()
+    with get_connection() as conn:
+        total_commandes = pd.read_sql_query(
+            "SELECT COALESCE(SUM(prix_total), 0) AS total FROM commandes WHERE dans_corbeille = 0", conn
+        ).iloc[0]["total"]
+        total_depenses = pd.read_sql_query(
+            "SELECT COALESCE(SUM(montant), 0) AS total FROM depenses", conn
+        ).iloc[0]["total"]
 
     benefice = total_commandes - total_depenses
 
     col1, col2, col3 = st.columns(3)
-
     with col1:
-        st.metric("💰 Chiffre d'affaires", f"{total_commandes:,.0f}")
+        st.metric("💰 Chiffre d'affaires", f"{total_commandes:,.0f} FCFA")
     with col2:
-        st.metric("💸 Total dépenses", f"{total_depenses:,.0f}")
+        st.metric("💸 Total dépenses", f"{total_depenses:,.0f} FCFA")
     with col3:
-        st.metric("📈 Bénéfice", f"{benefice:,.0f}")
+        st.metric("📈 Bénéfice", f"{benefice:,.0f} FCFA")
 
 
 # ============================================================
-# 7. CORBEILLE
+# 8. CORBEILLE
 # ============================================================
 
 elif menu == "🗑 Corbeille (Archivées > 3 mois)":
-
     st.header("🗑 Corbeille - Commandes archivées")
-
     limite_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
 
-    conn = get_connection()
-    c = conn.cursor()
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE commandes SET dans_corbeille = 1 WHERE date_depot < ? AND statut_commande = 'Terminées'",
+            (limite_date,)
+        )
+        conn.commit()
 
-    c.execute("""
-        UPDATE commandes
-        SET dans_corbeille = 1
-        WHERE date_depot < ? AND statut_commande = 'Terminées'
-    """, (limite_date,))
-
-    conn.commit()
-
-    df_corbeille = pd.read_sql_query(
-        "SELECT * FROM commandes WHERE dans_corbeille = 1 ORDER BY id DESC",
-        conn
-    )
-
-    conn.close()
+        df_corbeille = pd.read_sql_query(
+            "SELECT * FROM commandes WHERE dans_corbeille = 1 ORDER BY id DESC", conn
+        )
 
     if df_corbeille.empty:
         st.info("🗑 La corbeille est vide.")
     else:
-        st.dataframe(df_corbeille, width="stretch")
-        st.warning("Les commandes affichées ici sont archivées.")
+        st.dataframe(df_corbeille, use_container_width=True)
