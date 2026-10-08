@@ -184,22 +184,24 @@ def obtenir_nb_nouvelles_commandes():
 
 
 # ============================================================
-# NAVIGATION LATÉRALE ET NOTIFICATIONS
+# NAVIGATION LATÉRALE ET RESTRICTION CLIENT
 # ============================================================
 
 st.title("🧺 Application de Suivi de Pressing")
 
 query_params = st.query_params
 cmd_id_url = query_params.get("cmd_id", None)
+mode_client = query_params.get("mode", None) == "client" or cmd_id_url is not None
 
-nb_nouvelles = obtenir_nb_nouvelles_commandes()
-label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
+# Si le client arrive via le QR code, on restreint les menus disponibles
+if mode_client:
+    options_menu = ["📱 Commande en Ligne (Client)"]
+    menu = st.sidebar.selectbox("Navigation", options_menu)
+else:
+    nb_nouvelles = obtenir_nb_nouvelles_commandes()
+    label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
 
-default_menu_index = 2 if cmd_id_url else 0
-
-menu = st.sidebar.selectbox(
-    "Navigation",
-    [
+    options_menu = [
         label_boite,
         "Nouvelle Commande (Comptoir)",
         "📱 Commande en Ligne (Client)",
@@ -208,12 +210,13 @@ menu = st.sidebar.selectbox(
         "Historique des Commandes",
         "💸 Gestion des Dépenses & Bénéfice",
         "🗑 Corbeille (Archivées > 3 mois)",
-    ],
-    index=default_menu_index
-)
+    ]
 
-if nb_nouvelles > 0:
-    st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
+    default_menu_index = 2 if cmd_id_url else 0
+    menu = st.sidebar.selectbox("Navigation", options_menu, index=default_menu_index)
+
+    if nb_nouvelles > 0:
+        st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
 
 # ============================================================
 # 1. BOÎTE DE RÉCEPTION & NOTIFICATIONS
@@ -683,7 +686,7 @@ elif menu == "Mise à jour & Retraits":
                         date_recuperation = ?
                     WHERE id = ?
                 """, (
-                    json.dumps(nouveaux_recup),
+                    json.JSON.dumps(nouveaux_recup) if 'json' in globals() else json.dumps(nouveaux_recup),
                     nouveau_statut,
                     nouveau_statut,
                     nouveau_montant_verse,
