@@ -187,6 +187,52 @@ MODES_PAIEMENT = ["Espèces", "Wave"]
 
 st.title("🧺 Application de Suivi de Pressing")
 
+# ============================================================
+# TABLEAU DE BORD - BIENVENUE (TONS BLEUS)
+# ============================================================
+st.markdown("""
+    <div style="
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        padding: 30px;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 25px;
+    ">
+        <h1 style="color: white; margin: 0; font-size: 2.5em; font-weight: 700;">🧺 CleanUp+</h1>
+        <p style="font-size: 1.3em; margin-top: 10px; opacity: 0.9;">Bienvenue chez CleanUp+ — Votre espace de gestion de pressing intelligent</p>
+    </div>
+""", unsafe_allow_html=True)
+
+col_m1, col_m2, col_m3 = st.columns(3)
+
+with col_m1:
+    st.markdown("""
+        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1e3c72; text-align: center;">
+            <h4 style="color: #0d47a1; margin: 0;">Commandes en cours</h4>
+            <p style="font-size: 1.8em; font-weight: bold; color: #1e3c72; margin: 5px 0 0 0;">📦 Actives</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_m2:
+    st.markdown("""
+        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2a5298; text-align: center;">
+            <h4 style="color: #0d47a1; margin: 0;">Service Populaire</h4>
+            <p style="font-size: 1.5em; font-weight: bold; color: #2a5298; margin: 5px 0 0 0;">Lavage + Repassage</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col_m3:
+    st.markdown("""
+        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1565c0; text-align: center;">
+            <h4 style="color: #0d47a1; margin: 0;">Paiement Rapide</h4>
+            <p style="font-size: 1.5em; font-weight: bold; color: #1565c0; margin: 5px 0 0 0;">📱 Wave & Espèces</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 query_params = st.query_params
 cmd_id_url = query_params.get("cmd_id", None)
 page_url = query_params.get("page", None)
@@ -584,7 +630,6 @@ elif menu == "📱 Commande en Ligne (Client)":
 
                 st.success(f"✅ Commande #{last_id} enregistrée avec succès pour {prix_estime:,.0f} FCFA !")
 
-                # URL de base mise à jour ici :
                 base_url = "https://cleanup-dyf9esw7bawavodkfst36v.streamlit.app"
                 byte_qr = generer_qr_code_bytes(f"{base_url}/?cmd_id={last_id}")
 
@@ -604,7 +649,6 @@ elif menu == "📲 Générer QR Code":
         horizontal=True
     )
 
-    # URL de base mise à jour ici :
     url_base = st.text_input("Lien de base de votre application Streamlit :",
                              value="https://cleanup-dyf9esw7bawavodkfst36v.streamlit.app")
 
@@ -687,7 +731,7 @@ elif menu == "Mise à jour & Retraits":
             if current_mode == 'Wave':
                 st.info(f"📱 Numéro Wave : **{NUMERO_WAVE}**")
 
-        # --- VISUALISATION DE LA POSITION DU CLIENT EN LIGNE ---
+        # --- VISUALISATION DE LA POSITION DU CLIENT EN LIGNE AVEC LIEN GOOGLE MAPS ---
         if commande['type_commande'] == 'En ligne' and pd.notna(commande.get('latitude')) and pd.notna(
                 commande.get('longitude')):
             st.markdown("---")
@@ -695,6 +739,21 @@ elif menu == "Mise à jour & Retraits":
 
             lat_client = float(commande['latitude'])
             lon_client = float(commande['longitude'])
+
+            google_maps_url = f"https://www.google.com/maps/search/?api=1&query={lat_client},{lon_client}"
+            st.markdown(
+                f"""<a href="{google_maps_url}" target="_blank" style="
+                    display: inline-block;
+                    background-color: #2a5298;
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    margin-bottom: 15px;
+                ">🗺️ Ouvrir l'itinéraire du client dans Google Maps</a>""",
+                unsafe_allow_html=True
+            )
 
             m_client = folium.Map(location=[lat_client, lon_client], zoom_start=15)
             folium.Marker(
