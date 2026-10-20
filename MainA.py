@@ -584,7 +584,8 @@ elif menu == "📱 Commande en Ligne (Client)":
 
                 st.success(f"✅ Commande #{last_id} enregistrée avec succès pour {prix_estime:,.0f} FCFA !")
 
-                base_url = "https://votre-app-pressing.streamlit.app"
+                # URL de base mise à jour ici :
+                base_url = "https://cleanup-dyf9esw7bawavodkfst36v.streamlit.app"
                 byte_qr = generer_qr_code_bytes(f"{base_url}/?cmd_id={last_id}")
 
                 st.image(byte_qr, caption=f"QR Code Commande #{last_id}", width=200)
@@ -603,8 +604,9 @@ elif menu == "📲 Générer QR Code":
         horizontal=True
     )
 
+    # URL de base mise à jour ici :
     url_base = st.text_input("Lien de base de votre application Streamlit :",
-                             value="https://votre-app-pressing.streamlit.app")
+                             value="https://cleanup-dyf9esw7bawavodkfst36v.streamlit.app")
 
     target_url = None
     caption_txt = ""
