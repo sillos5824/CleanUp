@@ -6,6 +6,7 @@ import sqlite3
 import folium
 import pandas as pd
 import qrcode
+import requests  # Nécessaire pour les suggestions d'adresse via OpenStreetMap
 import streamlit as st
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
@@ -165,6 +166,27 @@ def obtenir_nb_nouvelles_commandes():
         return c.fetchone()[0]
 
 
+# Fonction pour rechercher des suggestions d'adresses (ex: Abidjan, Côte d'Ivoire)
+def rechercher_adresses_osm(query):
+    if not query or len(query.strip()) < 3:
+        return []
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": f"{query}, Abidjan, Côte d'Ivoire",
+        "format": "json",
+        "limit": 5,
+        "addressdetails": 1
+    }
+    headers = {"User-Agent": "PressingAppStreamlit/1.0"}
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        pass
+    return []
+
+
 # ============================================================
 # CONSTANTES
 # ============================================================
@@ -251,7 +273,6 @@ liste_menus = [
     "🗑 Corbeille (Archivées > 3 mois)",
 ]
 
-# Détermination de l'index par défaut selon le QR code scanné
 default_menu_index = 0
 if cmd_id_url:
     default_menu_index = 2
@@ -282,7 +303,6 @@ if "Boîte de Réception" in menu:
         st.success("🎉 Aucune nouvelle commande en attente de traitement !")
     else:
         st.info(f"📌 Vous avez **{len(df_recus)}** commande(s) en attente.")
-
         filtre_type = st.radio("Filtrer par origine :", ["Toutes", "En ligne", "Comptoir"], horizontal=True)
 
         if filtre_type != "Toutes":
@@ -506,24 +526,52 @@ elif menu == "📱 Commande en Ligne (Client)":
             st.session_state.user_lat = 5.3599517
         if "user_lng" not in st.session_state:
             st.session_state.user_lng = -4.0082563
+        if "adresse_saisie_texte" not in st.session_state:
+            st.session_state.adresse_saisie_texte = ""
 
-        st.subheader("📍 1. Localisation")
+        st.subheader("📍 1. Localisation (Saisie manuelle avec suggestions ou GPS)")
+
         col_map1, col_map2 = st.columns([1, 2])
 
         with col_map1:
-            if st.button("🌐 Obtenir ma position GPS"):
+            if st.button("🌐 Obtenir ma position GPS automatique"):
                 loc = get_geolocation()
                 if loc and "coords" in loc:
                     st.session_state.user_lat = loc["coords"]["latitude"]
                     st.session_state.user_lng = loc["coords"]["longitude"]
-                    st.success("✅ Position mise à jour !")
+                    st.success("✅ Position GPS actualisée !")
 
-            adresse_saisie = st.text_area("Repère / Précision d'adresse")
+            st.markdown("---")
+            # Champ de saisie manuelle avec suggestion automatique
+            recherche_adresse = st.text_input(
+                "Saisissez votre quartier ou rue (ex: Cocody, Marcory, Yopougon...)",
+                value=st.session_state.adresse_saisie_texte
+            )
+
+            # Récupération dynamique des suggestions d'adresses
+            suggestions = []
+            if recherche_adresse and len(recherche_adresse) >= 3:
+                suggestions = rechercher_adresses_osm(recherche_adresse)
+
+            adresse_finale = recherche_adresse
+
+            if suggestions:
+                options_dict = {item["display_name"]: item for item in suggestions}
+                choix_suggestion = st.selectbox(
+                    "💡 Propositions d'adresses correspondantes :",
+                    ["-- Sélectionnez une adresse suggérée --"] + list(options_dict.keys())
+                )
+                if choix_suggestion != "-- Sélectionnez une adresse suggérée --":
+                    selected_data = options_dict[choix_suggestion]
+                    st.session_state.user_lat = float(selected_data["lat"])
+                    st.session_state.user_lng = float(selected_data["lon"])
+                    adresse_finale = choix_suggestion
+                    st.success("📍 Adresse sélectionnée et géolocalisée !")
 
         with col_map2:
             m = folium.Map(location=[st.session_state.user_lat, st.session_state.user_lng], zoom_start=14)
-            folium.Marker([st.session_state.user_lat, st.session_state.user_lng]).add_to(m)
-            map_data = st_folium(m, height=250, width="100%", key="map_client")
+            folium.Marker([st.session_state.user_lat, st.session_state.user_lng], popup="Lieu de livraison").add_to(m)
+            map_data = st_folium(m, height=270, width="100%", key="map_client")
 
             if map_data and map_data.get("last_clicked"):
                 st.session_state.user_lat = map_data["last_clicked"]["lat"]
@@ -623,7 +671,7 @@ elif menu == "📱 Commande en Ligne (Client)":
                         json.dumps({k: 0 for k in articles_client}), prix_estime,
                         modalite_client, mode_paiement_client, montant_verse_client,
                         total_art, st.session_state.user_lat, st.session_state.user_lng,
-                        adresse_saisie, service_choisi
+                        adresse_finale, service_choisi
                     ))
                     last_id = c.lastrowid
                     conn.commit()
@@ -637,7 +685,7 @@ elif menu == "📱 Commande en Ligne (Client)":
 
 
 # ============================================================
-# 4. GÉNÉRATEUR DE QR CODE MULTI-USAGE (EN LIGNE & COMPTOIR)
+# 4. GÉNÉRATEUR DE QR CODE MULTI-USAGE
 # ============================================================
 
 elif menu == "📲 Générer QR Code":
@@ -731,7 +779,6 @@ elif menu == "Mise à jour & Retraits":
             if current_mode == 'Wave':
                 st.info(f"📱 Numéro Wave : **{NUMERO_WAVE}**")
 
-        # --- VISUALISATION DE LA POSITION DU CLIENT EN LIGNE AVEC LIEN GOOGLE MAPS ---
         if commande['type_commande'] == 'En ligne' and pd.notna(commande.get('latitude')) and pd.notna(
                 commande.get('longitude')):
             st.markdown("---")
