@@ -6,20 +6,69 @@ import sqlite3
 import folium
 import pandas as pd
 import qrcode
-import requests  # Nécessaire pour les suggestions d'adresse via OpenStreetMap
+import requests
 import streamlit as st
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 
 # ============================================================
-# CONFIGURATION DE LA PAGE
+# CONFIGURATION DE LA PAGE & DESIGN CSS GLOBAL
 # ============================================================
 
 st.set_page_config(
-    page_title="Gestion Pressing",
+    page_title="CleanUp+ | Gestion Pressing",
     page_icon="🧺",
     layout="wide"
 )
+
+# Injection de styles CSS pour un design moderne, épuré et "beau à voir"
+st.markdown("""
+    <style>
+        /* Import d'une police moderne */
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+        html, body, [class*="css"] {
+            font-family: 'Plus Jakarta+ Sans', sans-serif;
+        }
+
+        /* Style global du fond principal */
+        .stApp {
+            background-color: #f8fafc;
+        }
+
+        /* Personnalisation des boutons principaux */
+        .stButton>button {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            border: none;
+            box-shadow: 0 4px 6px -1px rgba(30, 60, 114, 0.2);
+            transition: all 0.3s ease;
+        }
+        .stButton>button:hover {
+            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
+            box-shadow: 0 6px 12px -2px rgba(30, 60, 114, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* Style des champs de saisie */
+        .stTextInput>div>div>input, .stSelectbox>div>div>select, .stTextArea>div>div>textarea {
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            background-color: #ffffff;
+        }
+
+        /* Cartes et conteneurs visuels */
+        .css-1r6slb0, div[data-testid="stExpander"] {
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            background-color: #ffffff;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 DB_NAME = "pressing.db"
 NUMERO_WAVE = "0140994610"
@@ -166,7 +215,6 @@ def obtenir_nb_nouvelles_commandes():
         return c.fetchone()[0]
 
 
-# Fonction pour rechercher des suggestions d'adresses (ex: Abidjan, Côte d'Ivoire)
 def rechercher_adresses_osm(query):
     if not query or len(query.strip()) < 3:
         return []
@@ -207,8 +255,6 @@ MODES_PAIEMENT = ["Espèces", "Wave"]
 # NAVIGATION LATÉRALE ET GESTION DES PARAMÈTRES URL
 # ============================================================
 
-st.title("🧺 Application de Suivi de Pressing")
-
 query_params = st.query_params
 cmd_id_url = query_params.get("cmd_id", None)
 page_url = query_params.get("page", None)
@@ -220,20 +266,20 @@ if cmd_id_url or page_url == "ligne":
     st.sidebar.info("📱 Espace Client Dédié — CleanUp+")
 else:
     # ============================================================
-    # TABLEAU DE BORD - GÉRANT (TONS BLEUS)
+    # TABLEAU DE BORD - GÉRANT (DESIGN ÉPURÉ & MODERNE)
     # ============================================================
     st.markdown("""
         <div style="
             background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            padding: 30px;
-            border-radius: 15px;
+            padding: 35px;
+            border-radius: 16px;
             color: white;
             text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            margin-bottom: 25px;
+            box-shadow: 0 10px 25px -5px rgba(30, 60, 114, 0.3);
+            margin-bottom: 30px;
         ">
-            <h1 style="color: white; margin: 0; font-size: 2.5em; font-weight: 700;">🧺 CleanUp+</h1>
-            <p style="font-size: 1.3em; margin-top: 10px; opacity: 0.9;">Bienvenue chez CleanUp+ — Votre espace de gestion de pressing intelligent</p>
+            <h1 style="color: white; margin: 0; font-size: 2.8em; font-weight: 700; letter-spacing: -0.5px;">🧺 CleanUp+</h1>
+            <p style="font-size: 1.2em; margin-top: 12px; opacity: 0.95; font-weight: 400;">Votre espace de gestion de pressing intelligent et connecté</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -241,25 +287,25 @@ else:
 
     with col_m1:
         st.markdown("""
-            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1e3c72; text-align: center;">
-                <h4 style="color: #0d47a1; margin: 0;">Commandes en cours</h4>
-                <p style="font-size: 1.8em; font-weight: bold; color: #1e3c72; margin: 5px 0 0 0;">📦 Actives</p>
+            <div style="background-color: #ffffff; padding: 22px; border-radius: 12px; border-left: 5px solid #1e3c72; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); text-align: center;">
+                <h4 style="color: #1e3c72; margin: 0; font-size: 1.1em; font-weight: 600;">Commandes en cours</h4>
+                <p style="font-size: 1.7em; font-weight: 700; color: #0f172a; margin: 8px 0 0 0;">📦 Actives</p>
             </div>
         """, unsafe_allow_html=True)
 
     with col_m2:
         st.markdown("""
-            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2a5298; text-align: center;">
-                <h4 style="color: #0d47a1; margin: 0;">Service Populaire</h4>
-                <p style="font-size: 1.5em; font-weight: bold; color: #2a5298; margin: 5px 0 0 0;">Lavage + Repassage</p>
+            <div style="background-color: #ffffff; padding: 22px; border-radius: 12px; border-left: 5px solid #2a5298; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); text-align: center;">
+                <h4 style="color: #2a5298; margin: 0; font-size: 1.1em; font-weight: 600;">Service Populaire</h4>
+                <p style="font-size: 1.4em; font-weight: 700; color: #0f172a; margin: 8px 0 0 0;">Lavage + Repassage</p>
             </div>
         """, unsafe_allow_html=True)
 
     with col_m3:
         st.markdown("""
-            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1565c0; text-align: center;">
-                <h4 style="color: #0d47a1; margin: 0;">Paiement Rapide</h4>
-                <p style="font-size: 1.5em; font-weight: bold; color: #1565c0; margin: 5px 0 0 0;">📱 Wave & Espèces</p>
+            <div style="background-color: #ffffff; padding: 22px; border-radius: 12px; border-left: 5px solid #1565c0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); text-align: center;">
+                <h4 style="color: #1565c0; margin: 0; font-size: 1.1em; font-weight: 600;">Paiement Rapide</h4>
+                <p style="font-size: 1.4em; font-weight: 700; color: #0f172a; margin: 8px 0 0 0;">📱 Wave & Espèces</p>
             </div>
         """, unsafe_allow_html=True)
 
