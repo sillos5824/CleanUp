@@ -232,7 +232,6 @@ def search_adresse_autocomplete(searchterm: str):
         response = requests.get(url, params=params, headers=headers, timeout=3)
         if response.status_code == 200:
             data = response.json()
-            # Retourne un tuple (Nom affiché, données complètes associées)
             return [(item["display_name"], item) for item in data]
     except Exception:
         pass
@@ -963,7 +962,36 @@ elif menu == "Mise à jour & Retraits":
 # ============================================================
 
 elif menu == "Historique des Commandes":
-    st.header("📊 Historique des Commandes Actives")
+    col_h1, col_h2, col_h3 = st.columns([3, 1, 1])
+    with col_h1:
+        st.header("📊 Historique des Commandes Actives")
+    with col_h2:
+        if st.button("🔄 Actualiser", use_container_width=True):
+            st.rerun()
+    with col_h3:
+        btn_raz = st.button("🗑️ Vider l'historique", type="secondary", use_container_width=True)
+
+    # Zone de confirmation pour la remise à zéro de l'historique
+    if btn_raz:
+        st.session_state.confirmation_raz = True
+
+    if st.session_state.get("confirmation_raz", False):
+        st.warning("⚠️ Attention : Voulez-vous vraiment archiver toutes les commandes actives vers la corbeille ?")
+        col_conf1, col_conf2 = st.columns(2)
+        with col_conf1:
+            if st.button("✅ Oui, tout archiver", type="primary"):
+                with get_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("UPDATE commandes SET dans_corbeille = 1 WHERE dans_corbeille = 0")
+                    conn.commit()
+                st.session_state.confirmation_raz = False
+                st.success("✅ L'historique a été vidé avec succès !")
+                st.rerun()
+        with col_conf2:
+            if st.button("❌ Annuler"):
+                st.session_state.confirmation_raz = False
+                st.rerun()
+
     filtre = st.radio("Filtrer par statut", ["Toutes", "En cours", "Terminées"], horizontal=True)
 
     with get_connection() as conn:
