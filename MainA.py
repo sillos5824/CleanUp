@@ -209,82 +209,81 @@ MODES_PAIEMENT = ["Espèces", "Wave"]
 
 st.title("🧺 Application de Suivi de Pressing")
 
-# ============================================================
-# TABLEAU DE BORD - BIENVENUE (TONS BLEUS)
-# ============================================================
-st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        padding: 30px;
-        border-radius: 15px;
-        color: white;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        margin-bottom: 25px;
-    ">
-        <h1 style="color: white; margin: 0; font-size: 2.5em; font-weight: 700;">🧺 CleanUp+</h1>
-        <p style="font-size: 1.3em; margin-top: 10px; opacity: 0.9;">Bienvenue chez CleanUp+ — Votre espace de gestion de pressing intelligent</p>
-    </div>
-""", unsafe_allow_html=True)
-
-col_m1, col_m2, col_m3 = st.columns(3)
-
-with col_m1:
-    st.markdown("""
-        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1e3c72; text-align: center;">
-            <h4 style="color: #0d47a1; margin: 0;">Commandes en cours</h4>
-            <p style="font-size: 1.8em; font-weight: bold; color: #1e3c72; margin: 5px 0 0 0;">📦 Actives</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col_m2:
-    st.markdown("""
-        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2a5298; text-align: center;">
-            <h4 style="color: #0d47a1; margin: 0;">Service Populaire</h4>
-            <p style="font-size: 1.5em; font-weight: bold; color: #2a5298; margin: 5px 0 0 0;">Lavage + Repassage</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col_m3:
-    st.markdown("""
-        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1565c0; text-align: center;">
-            <h4 style="color: #0d47a1; margin: 0;">Paiement Rapide</h4>
-            <p style="font-size: 1.5em; font-weight: bold; color: #1565c0; margin: 5px 0 0 0;">📱 Wave & Espèces</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
 query_params = st.query_params
 cmd_id_url = query_params.get("cmd_id", None)
 page_url = query_params.get("page", None)
 
-nb_nouvelles = obtenir_nb_nouvelles_commandes()
-label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
+# RESTRICTION DE LA NAVIGATION SI SCANNÉ EN LIGNE
+if cmd_id_url or page_url == "ligne":
+    liste_menus = ["📱 Commande en Ligne (Client)"]
+    menu = st.sidebar.selectbox("Navigation Client", liste_menus, index=0)
+    st.sidebar.info("📱 Espace Client Dédié — CleanUp+")
+else:
+    # ============================================================
+    # TABLEAU DE BORD - GÉRANT (TONS BLEUS)
+    # ============================================================
+    st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 30px;
+            border-radius: 15px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        ">
+            <h1 style="color: white; margin: 0; font-size: 2.5em; font-weight: 700;">🧺 CleanUp+</h1>
+            <p style="font-size: 1.3em; margin-top: 10px; opacity: 0.9;">Bienvenue chez CleanUp+ — Votre espace de gestion de pressing intelligent</p>
+        </div>
+    """, unsafe_allow_html=True)
 
-liste_menus = [
-    label_boite,
-    "Nouvelle Commande (Comptoir)",
-    "📱 Commande en Ligne (Client)",
-    "📲 Générer QR Code",
-    "Mise à jour & Retraits",
-    "Historique des Commandes",
-    "💸 Gestion des Dépenses & Bénéfice",
-    "🗑 Corbeille (Archivées > 3 mois)",
-]
+    col_m1, col_m2, col_m3 = st.columns(3)
 
-default_menu_index = 0
-if cmd_id_url:
-    default_menu_index = 2
-elif page_url == "ligne":
-    default_menu_index = 2
-elif page_url == "comptoir":
-    default_menu_index = 1
+    with col_m1:
+        st.markdown("""
+            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1e3c72; text-align: center;">
+                <h4 style="color: #0d47a1; margin: 0;">Commandes en cours</h4>
+                <p style="font-size: 1.8em; font-weight: bold; color: #1e3c72; margin: 5px 0 0 0;">📦 Actives</p>
+            </div>
+        """, unsafe_allow_html=True)
 
-menu = st.sidebar.selectbox("Navigation", liste_menus, index=default_menu_index)
+    with col_m2:
+        st.markdown("""
+            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #2a5298; text-align: center;">
+                <h4 style="color: #0d47a1; margin: 0;">Service Populaire</h4>
+                <p style="font-size: 1.5em; font-weight: bold; color: #2a5298; margin: 5px 0 0 0;">Lavage + Repassage</p>
+            </div>
+        """, unsafe_allow_html=True)
 
-if nb_nouvelles > 0:
-    st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
+    with col_m3:
+        st.markdown("""
+            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 10px; border-left: 5px solid #1565c0; text-align: center;">
+                <h4 style="color: #0d47a1; margin: 0;">Paiement Rapide</h4>
+                <p style="font-size: 1.5em; font-weight: bold; color: #1565c0; margin: 5px 0 0 0;">📱 Wave & Espèces</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    nb_nouvelles = obtenir_nb_nouvelles_commandes()
+    label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
+
+    liste_menus = [
+        label_boite,
+        "Nouvelle Commande (Comptoir)",
+        "📱 Commande en Ligne (Client)",
+        "📲 Générer QR Code",
+        "Mise à jour & Retraits",
+        "Historique des Commandes",
+        "💸 Gestion des Dépenses & Bénéfice",
+        "🗑 Corbeille (Archivées > 3 mois)",
+    ]
+
+    default_menu_index = 1 if page_url == "comptoir" else 0
+    menu = st.sidebar.selectbox("Navigation", liste_menus, index=default_menu_index)
+
+    if nb_nouvelles > 0:
+        st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
 
 # ============================================================
 # 1. BOÎTE DE RÉCEPTION & NOTIFICATIONS
@@ -513,9 +512,10 @@ elif menu == "📱 Commande en Ligne (Client)":
             except Exception:
                 st.write(cmd["articles_deposes"])
 
-            if st.button("⬅️ Passer une nouvelle commande"):
-                st.query_params.clear()
-                st.rerun()
+            if not (cmd_id_url or page_url == "ligne"):
+                if st.button("⬅️ Passer une nouvelle commande"):
+                    st.query_params.clear()
+                    st.rerun()
         else:
             st.error("❌ Commande introuvable.")
 
@@ -542,13 +542,11 @@ elif menu == "📱 Commande en Ligne (Client)":
                     st.success("✅ Position GPS actualisée !")
 
             st.markdown("---")
-            # Champ de saisie manuelle avec suggestion automatique
             recherche_adresse = st.text_input(
                 "Saisissez votre quartier ou rue (ex: Cocody, Marcory, Yopougon...)",
                 value=st.session_state.adresse_saisie_texte
             )
 
-            # Récupération dynamique des suggestions d'adresses
             suggestions = []
             if recherche_adresse and len(recherche_adresse) >= 3:
                 suggestions = rechercher_adresses_osm(recherche_adresse)
