@@ -10,6 +10,7 @@ import requests
 import streamlit as st
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
+from streamlit_searchbox import st_searchbox
 
 # ============================================================
 # CONFIGURATION DE LA PAGE & DESIGN CSS GLOBAL
@@ -215,21 +216,24 @@ def obtenir_nb_nouvelles_commandes():
         return c.fetchone()[0]
 
 
-def rechercher_adresses_osm(query):
-    if not query or len(query.strip()) < 3:
+# Fonction de recherche instantanée pour st_searchbox
+def search_adresse_autocomplete(searchterm: str):
+    if not searchterm or len(searchterm.strip()) < 3:
         return []
     url = "https://nominatim.openstreetmap.org/search"
     params = {
-        "q": f"{query}, Abidjan, Côte d'Ivoire",
+        "q": f"{searchterm}, Abidjan, Côte d'Ivoire",
         "format": "json",
         "limit": 5,
         "addressdetails": 1
     }
     headers = {"User-Agent": "PressingAppStreamlit/1.0"}
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=5)
+        response = requests.get(url, params=params, headers=headers, timeout=3)
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            # Retourne un tuple (Nom affiché, données complètes associées)
+            return [(item["display_name"], item) for item in data]
     except Exception:
         pass
     return []
@@ -572,10 +576,8 @@ elif menu == "📱 Commande en Ligne (Client)":
             st.session_state.user_lat = 5.3599517
         if "user_lng" not in st.session_state:
             st.session_state.user_lng = -4.0082563
-        if "adresse_saisie_texte" not in st.session_state:
-            st.session_state.adresse_saisie_texte = ""
 
-        st.subheader("📍 1. Localisation (Saisie manuelle avec suggestions ou GPS)")
+        st.subheader("📍 1. Localisation (Recherche instantanée ou GPS)")
 
         col_map1, col_map2 = st.columns([1, 2])
 
@@ -588,29 +590,23 @@ elif menu == "📱 Commande en Ligne (Client)":
                     st.success("✅ Position GPS actualisée !")
 
             st.markdown("---")
-            recherche_adresse = st.text_input(
-                "Saisissez votre quartier ou rue (ex: Cocody, Marcory, Yopougon...)",
-                value=st.session_state.adresse_saisie_texte
+
+            # Recherche d'adresse instantanée en temps réel
+            selected_adresse_data = st_searchbox(
+                search_adresse_autocomplete,
+                key="adresse_searchbox",
+                placeholder="Tapez un quartier (ex: Cocody, Marcory...)",
+                label="Recherche d'adresse instantanée"
             )
 
-            suggestions = []
-            if recherche_adresse and len(recherche_adresse) >= 3:
-                suggestions = rechercher_adresses_osm(recherche_adresse)
-
-            adresse_finale = recherche_adresse
-
-            if suggestions:
-                options_dict = {item["display_name"]: item for item in suggestions}
-                choix_suggestion = st.selectbox(
-                    "💡 Propositions d'adresses correspondantes :",
-                    ["-- Sélectionnez une adresse suggérée --"] + list(options_dict.keys())
-                )
-                if choix_suggestion != "-- Sélectionnez une adresse suggérée --":
-                    selected_data = options_dict[choix_suggestion]
-                    st.session_state.user_lat = float(selected_data["lat"])
-                    st.session_state.user_lng = float(selected_data["lon"])
-                    adresse_finale = choix_suggestion
-                    st.success("📍 Adresse sélectionnée et géolocalisée !")
+            adresse_finale = ""
+            if selected_adresse_data:
+                adresse_finale = selected_adresse_data["display_name"]
+                st.session_state.user_lat = float(selected_adresse_data["lat"])
+                st.session_state.user_lng = float(selected_adresse_data["lon"])
+                st.success("📍 Adresse localisée avec succès !")
+            else:
+                adresse_finale = st.text_input("Précisions de l'adresse (Bâtiment, porte...)")
 
         with col_map2:
             m = folium.Map(location=[st.session_state.user_lat, st.session_state.user_lng], zoom_start=14)
