@@ -216,20 +216,21 @@ def obtenir_nb_nouvelles_commandes():
         return c.fetchone()[0]
 
 
-# Fonction de recherche instantanée pour st_searchbox
+# Fonction de recherche instantanée élargie à toutes les communes, quartiers et rues d'Abidjan
 def search_adresse_autocomplete(searchterm: str):
-    if not searchterm or len(searchterm.strip()) < 3:
+    if not searchterm or len(searchterm.strip()) < 2:
         return []
     url = "https://nominatim.openstreetmap.org/search"
     params = {
         "q": f"{searchterm}, Abidjan, Côte d'Ivoire",
         "format": "json",
-        "limit": 5,
-        "addressdetails": 1
+        "limit": 8,
+        "addressdetails": 1,
+        "countrycodes": "ci"
     }
     headers = {"User-Agent": "PressingAppStreamlit/1.0"}
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=3)
+        response = requests.get(url, params=params, headers=headers, timeout=4)
         if response.status_code == 200:
             data = response.json()
             return [(item["display_name"], item) for item in data]
@@ -317,19 +318,30 @@ else:
     nb_nouvelles = obtenir_nb_nouvelles_commandes()
     label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
 
-    # Menus réservés exclusivement à l'administrateur CleanUp+
-    liste_menus = [
-        label_boite,
-        "Nouvelle Commande (Comptoir)",
-        "📲 Générer QR Code",
-        "Mise à jour & Retraits",
-        "Historique des Commandes",
-        "💸 Gestion des Dépenses & Bénéfice",
-        "🗑 Corbeille (Archivées > 3 mois)",
-    ]
+    # ============================================================
+    # NAVIGATION PAR RUBRIQUES (ADMINISTRATION CLEANUP+)
+    # ============================================================
+    st.sidebar.markdown("### 🛠️ Administration CleanUp+")
 
-    default_menu_index = 1 if page_url == "comptoir" else 0
-    menu = st.sidebar.selectbox("Administration CleanUp+", liste_menus, index=default_menu_index)
+    rubriques_admin = {
+        "📦 Exploitation & Suivi": [
+            label_boite,
+            "Nouvelle Commande (Comptoir)",
+            "📱 Commande en Ligne (Client)",
+            "Mise à jour & Retraits",
+            "Historique des Commandes"
+        ],
+        "💰 Finances & Comptabilité": [
+            "💸 Gestion des Dépenses & Bénéfice"
+        ],
+        "⚙️ Outils & Système": [
+            "📲 Générer QR Code",
+            "🗑 Corbeille (Archivées > 3 mois)"
+        ]
+    }
+
+    rubrique_choisie = st.sidebar.selectbox("📂 Choisir une rubrique", list(rubriques_admin.keys()))
+    menu = st.sidebar.selectbox("🎯 Action", rubriques_admin[rubrique_choisie])
 
     if nb_nouvelles > 0:
         st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
@@ -576,7 +588,7 @@ elif menu == "📱 Commande en Ligne (Client)":
         if "user_lng" not in st.session_state:
             st.session_state.user_lng = -4.0082563
 
-        st.subheader("📍 1. Localisation (Recherche instantanée ou GPS)")
+        st.subheader("📍 1. Localisation (Recherche instantanée : Communes, Quartiers, Rues d'Abidjan)")
 
         col_map1, col_map2 = st.columns([1, 2])
 
@@ -590,12 +602,12 @@ elif menu == "📱 Commande en Ligne (Client)":
 
             st.markdown("---")
 
-            # Recherche d'adresse instantanée en temps réel
+            # Recherche d'adresse instantanée ultra-large pour Abidjan
             selected_adresse_data = st_searchbox(
                 search_adresse_autocomplete,
                 key="adresse_searchbox",
-                placeholder="Tapez un quartier (ex: Cocody, Marcory...)",
-                label="Recherche d'adresse instantanée"
+                placeholder="Ex: Cocody Angré, Marcory Zone 4, Boulevard Lagunaire...",
+                label="Recherche par Commune, Quartier ou Rue"
             )
 
             adresse_finale = ""
@@ -1095,4 +1107,13 @@ elif menu == "🗑 Corbeille (Archivées > 3 mois)":
     if df_corbeille.empty:
         st.info("🗑 La corbeille est vide.")
     else:
-        st.dataframe(df_corbeille, use_container_width=True)
+        df_corbeille_display = df_corbeille.copy()
+        def format_deposes_corbeille(val):
+            try:
+                d = json.loads(val)
+                return ", ".join([f"{k}: {v}" for k, v in d.items()])
+            except Exception:
+                return str(val)
+        if "articles_deposes" in df_corbeille_display.columns:
+            df_corbeille_display["articles_deposes"] = df_corbeille_display["articles_deposes"].apply(format_deposes_corbeille)
+        st.dataframe(df_corbeille_display, use_container_width=True)
