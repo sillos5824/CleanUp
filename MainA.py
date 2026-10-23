@@ -317,10 +317,10 @@ else:
     nb_nouvelles = obtenir_nb_nouvelles_commandes()
     label_boite = f"📥 Boîte de Réception ({nb_nouvelles})" if nb_nouvelles > 0 else "📥 Boîte de Réception"
 
+    # Menus réservés exclusivement à l'administrateur CleanUp+
     liste_menus = [
         label_boite,
         "Nouvelle Commande (Comptoir)",
-        "📱 Commande en Ligne (Client)",
         "📲 Générer QR Code",
         "Mise à jour & Retraits",
         "Historique des Commandes",
@@ -329,7 +329,7 @@ else:
     ]
 
     default_menu_index = 1 if page_url == "comptoir" else 0
-    menu = st.sidebar.selectbox("Navigation", liste_menus, index=default_menu_index)
+    menu = st.sidebar.selectbox("Administration CleanUp+", liste_menus, index=default_menu_index)
 
     if nb_nouvelles > 0:
         st.sidebar.warning(f"🔔 **{nb_nouvelles}** nouvelle(s) commande(s) en attente !")
