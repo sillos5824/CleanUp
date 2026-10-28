@@ -1,8 +1,9 @@
-streamlit
-pandas
-folium
+streamlit-option-menu
 streamlit-folium
 streamlit-js-eval
-qrcode
-requests
 streamlit-searchbox
+folium
+qrcode
+pandas
+pillow
+requests
