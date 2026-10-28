@@ -263,11 +263,15 @@ query_params = st.query_params
 cmd_id_url = query_params.get("cmd_id", None)
 page_url = query_params.get("page", None)
 
-# RESTRICTION DE LA NAVIGATION SI SCANNÉ EN LIGNE
+# RESTRICTION DE LA NAVIGATION SI SCANNÉ EN LIGNE OU AU COMPTOIR
 if cmd_id_url or page_url == "ligne":
     liste_menus = ["📱 Commande en Ligne (Client)"]
     menu = st.sidebar.selectbox("Navigation Client", liste_menus, index=0)
     st.sidebar.info("📱 Espace Client Dédié — CleanUp+")
+elif page_url == "comptoir":
+    liste_menus = ["Nouvelle Commande (Comptoir)"]
+    menu = st.sidebar.selectbox("Navigation Comptoir", liste_menus, index=0)
+    st.sidebar.info("🏬 Espace Comptoir Dédié — CleanUp+")
 else:
     # ============================================================
     # TABLEAU DE BORD - GÉRANT (DESIGN ÉPURÉ & MODERNE)
@@ -1114,6 +1118,6 @@ elif menu == "🗑 Corbeille (Archivées > 3 mois)":
                 return ", ".join([f"{k}: {v}" for k, v in d.items()])
             except Exception:
                 return str(val)
-        if "articles_deposes" in df_corbeille_display.columns:
+        if "articles_déséposes" in df_corbeille_display.columns or "articles_deposes" in df_corbeille_display.columns:
             df_corbeille_display["articles_deposes"] = df_corbeille_display["articles_deposes"].apply(format_deposes_corbeille)
         st.dataframe(df_corbeille_display, use_container_width=True)
