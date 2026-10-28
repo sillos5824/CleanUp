@@ -13,6 +13,7 @@ from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 from streamlit_searchbox import st_searchbox
 from streamlit_option_menu import option_menu  # Pour une navigation moderne
+import streamlit.components.v1 as components
 
 # ============================================================
 # CONFIGURATION DE LA PAGE & DESIGN CSS GLOBAL
@@ -25,7 +26,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Injection de styles CSS avancés pour un design épuré, type SaaS moderne
+# Injection de styles CSS avancés (incluant l'animation de clignotement)
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -36,6 +37,18 @@ st.markdown("""
 
         .stApp {
             background-color: #f8fafc;
+        }
+
+        /* Animation de clignotement pour les alertes */
+        @keyframes clignoter {
+            0% { opacity: 1; }
+            50% { opacity: 0.2; }
+            100% { opacity: 1; }
+        }
+        .alerte-clignotante {
+            animation: clignoter 1s infinite;
+            color: #ef4444;
+            font-weight: bold;
         }
 
         /* Boutons stylisés */
@@ -69,11 +82,21 @@ NUMERO_WAVE = "0140994610"
 
 
 # ============================================================
-# GESTION DE LA BASE DE DONNÉES
+# GESTION DE LA BASE DE DONNÉES & AUDIO
 # ============================================================
 
 def get_connection():
     return sqlite3.connect(DB_NAME)
+
+
+def jouer_son_notification():
+    son_url = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+    sound_html = f"""
+        <audio autoplay>
+            <source src="{son_url}" type="audio/mp3">
+        </audio>
+    """
+    components.html(sound_html, height=0, width=0)
 
 
 def init_db():
@@ -314,7 +337,10 @@ else:
             }
         )
         if nb_nouvelles > 0:
-            st.warning(f"🔔 **{nb_nouvelles}** commande(s) en attente !")
+            # Alerte visuelle clignotante dans la barre latérale
+            st.markdown(f'<p class="alerte-clignotante">🔔 {nb_nouvelles} commande(s) en attente !</p>', unsafe_allow_html=True)
+            # Déclenchement du signal sonore
+            jouer_son_notification()
 
 # ============================================================
 # 1. BOÎTE DE RÉCEPTION
@@ -839,8 +865,8 @@ elif menu == "💸 Dépenses & Bénéfice":
 
     with get_connection() as conn:
         total_commandes = \
-        pd.read_sql_query("SELECT COALESCE(SUM(prix_total), 0) AS total FROM commandes WHERE dans_corbeille = 0",
-                          conn).iloc[0]["total"]
+            pd.read_sql_query("SELECT COALESCE(SUM(prix_total), 0) AS total FROM commandes WHERE dans_corbeille = 0",
+                              conn).iloc[0]["total"]
         total_depenses = pd.read_sql_query("SELECT COALESCE(SUM(montant), 0) AS total FROM depenses", conn).iloc[0][
             "total"]
 
