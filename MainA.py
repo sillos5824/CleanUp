@@ -13,7 +13,6 @@ from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
 from streamlit_searchbox import st_searchbox
 from streamlit_option_menu import option_menu  # Pour une navigation moderne
-import streamlit.components.v1 as components
 
 # ============================================================
 # CONFIGURATION DE LA PAGE & DESIGN CSS GLOBAL
@@ -70,22 +69,11 @@ NUMERO_WAVE = "0140994610"
 
 
 # ============================================================
-# GESTION DE LA BASE DE DONNÉES & AUDIO
+# GESTION DE LA BASE DE DONNÉES
 # ============================================================
 
 def get_connection():
     return sqlite3.connect(DB_NAME)
-
-
-def jouer_son_notification():
-    # Son de notification cloche/alerte en ligne
-    son_url = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-    sound_html = f"""
-        <audio autoplay>
-            <source src="{son_url}" type="audio/mp3">
-        </audio>
-    """
-    components.html(sound_html, height=0, width=0)
 
 
 def init_db():
@@ -327,7 +315,6 @@ else:
         )
         if nb_nouvelles > 0:
             st.warning(f"🔔 **{nb_nouvelles}** commande(s) en attente !")
-            jouer_son_notification()
 
 # ============================================================
 # 1. BOÎTE DE RÉCEPTION
@@ -852,8 +839,8 @@ elif menu == "💸 Dépenses & Bénéfice":
 
     with get_connection() as conn:
         total_commandes = \
-            pd.read_sql_query("SELECT COALESCE(SUM(prix_total), 0) AS total FROM commandes WHERE dans_corbeille = 0",
-                              conn).iloc[0]["total"]
+        pd.read_sql_query("SELECT COALESCE(SUM(prix_total), 0) AS total FROM commandes WHERE dans_corbeille = 0",
+                          conn).iloc[0]["total"]
         total_depenses = pd.read_sql_query("SELECT COALESCE(SUM(montant), 0) AS total FROM depenses", conn).iloc[0][
             "total"]
 
