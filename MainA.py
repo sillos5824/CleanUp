@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 import folium
+from PIL import Image, ImageDraw, ImageFont
 import pandas as pd
 import qrcode
 import requests
@@ -202,10 +203,79 @@ def calculer_devis(articles_selectionnes: dict, service: str) -> float:
     return float(total)
 
 
-def generer_qr_code_bytes(data_url: str) -> bytes:
-    img = qrcode.make(data_url)
+def generer_qr_code_bytes(data_url: str, type_panneau: str = "comptoir") -> bytes:
+    # 1. Génération du QR Code de base
+    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+    qr.add_data(data_url)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+    # Dimensions du panneau final
+    width, height = 800, 1100
+    panel = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(panel)
+
+    # Choix des couleurs et textes selon le type
+    if type_panneau == "comptoir":
+        primary_color = (255, 140, 0)  # Orange vif
+        btn_text = "AU COMPTOIR"
+        sub_text = "Scannez pour commander au comptoir"
+    else:
+        primary_color = (26, 150, 225)  # Bleu clair
+        btn_text = "EN LIGNE"
+        sub_text = "Scannez pour commander en ligne"
+
+    text_dark = (15, 23, 42)  # Bleu marine foncé
+
+    # 2. Dessin du cadre extérieur arrondi
+    draw.rounded_rectangle([30, 30, width - 30, height - 30], radius=40, outline=primary_color, width=6)
+
+    # 3. Chargement des polices (fallback sur la police par défaut si arial indisponible)
+    try:
+        font_title = ImageFont.truetype("arial.ttf", 55)
+        font_btn = ImageFont.truetype("arial.ttf", 40)
+        font_sub = ImageFont.truetype("arial.ttf", 22)
+    except IOError:
+        font_title = ImageFont.load_default()
+        font_btn = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+
+    # 4. Titre "CleanUp +"
+    draw.text((width / 2 - 140, 95), "CleanUp", fill=text_dark, font=font_title)
+    draw.text((width / 2 + 105, 95), "+", fill=primary_color, font=font_title)
+    # Ligne de soulignement du titre
+    draw.rectangle([width / 2 - 80, 165, width / 2 + 80, 173], fill=primary_color)
+
+    # 5. Cadre blanc central pour le QR Code
+    qr_size = 480
+    qr_img = qr_img.resize((qr_size, qr_size))
+    qr_x = (width - qr_size) // 2
+    qr_y = 210
+
+    draw.rounded_rectangle(
+        [qr_x - 20, qr_y - 20, qr_x + qr_size + 20, qr_y + qr_size + 20],
+        radius=25,
+        outline=primary_color,
+        width=4
+    )
+    panel.paste(qr_img, (qr_x, qr_y))
+
+    # 6. Bouton coloré inférieur
+    btn_x, btn_y, btn_w, btn_h = 160, 750, 480, 90
+    draw.rounded_rectangle([btn_x, btn_y, btn_x + btn_w, btn_y + btn_h], radius=45, fill=primary_color)
+
+    # Centrage du texte du bouton
+    bbox = draw.textbbox((0, 0), btn_text, font=font_btn)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text((btn_x + (btn_w - tw) / 2, btn_y + (btn_h - th) / 2 - 5), btn_text, fill="white", font=font_btn)
+
+    # 7. Texte explicatif du bas
+    bbox_sub = draw.textbbox((0, 0), sub_text, font=font_sub)
+    sw = bbox_sub[2] - bbox_sub[0]
+    draw.text(((width - sw) / 2, 880), sub_text, fill=(100, 116, 139), font=font_sub)
+
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    panel.save(buf, format="PNG")
     return buf.getvalue()
 
 
@@ -734,9 +804,9 @@ elif menu == "📱 Commande en Ligne (Client)":
                 st.success(f"✅ Commande #{last_id} enregistrée avec succès pour {prix_estime:,.0f} FCFA !")
 
                 base_url = "https://cleanup-dyf9esw7bawavodkfst36v.streamlit.app"
-                byte_qr = generer_qr_code_bytes(f"{base_url}/?cmd_id={last_id}")
+                byte_qr = generer_qr_code_bytes(f"{base_url}/?cmd_id={last_id}", type_panneau="ligne")
 
-                st.image(byte_qr, caption=f"QR Code Commande #{last_id}", width=200)
+                st.image(byte_qr, caption=f"Panneau QR Commande #{last_id}", width=350)
 
 
 # ============================================================
@@ -758,16 +828,19 @@ elif menu == "📲 Générer QR Code":
     target_url = None
     caption_txt = ""
     file_name_out = ""
+    type_panneau = "comptoir"
 
     if type_qr == "Interface Commande en Ligne":
         target_url = f"{url_base}/?page=ligne"
-        caption_txt = "Scannez pour accéder aux commandes en ligne"
+        caption_txt = "Panneau - Commande en Ligne"
         file_name_out = "qr_commande_en_ligne.png"
+        type_panneau = "ligne"
 
     elif type_qr == "Interface Commande au Comptoir":
         target_url = f"{url_base}/?page=comptoir"
-        caption_txt = "Scannez pour accéder aux commandes au comptoir"
+        caption_txt = "Panneau - Commande au Comptoir"
         file_name_out = "qr_commande_comptoir.png"
+        type_panneau = "comptoir"
 
     else:
         with get_connection() as conn:
@@ -778,13 +851,14 @@ elif menu == "📲 Générer QR Code":
         else:
             cmd_selected = st.selectbox("Sélectionner une commande :", df_cmds["id"].tolist())
             target_url = f"{url_base}/?cmd_id={cmd_selected}"
-            caption_txt = f"Suivi Commande #{cmd_selected}"
+            caption_txt = f"Panneau Suivi Commande #{cmd_selected}"
             file_name_out = f"qr_cmd_{cmd_selected}.png"
+            type_panneau = "ligne"
 
     if target_url and st.button("Générer le QR Code", type="primary"):
-        byte_im = generer_qr_code_bytes(target_url)
-        st.image(byte_im, caption=caption_txt, width=220)
-        st.download_button("💾 Télécharger le QR Code (PNG)", data=byte_im, file_name=file_name_out, mime="image/png")
+        byte_im = generer_qr_code_bytes(target_url, type_panneau=type_panneau)
+        st.image(byte_im, caption=caption_txt, width=350)
+        st.download_button("💾 Télécharger le Panneau QR (PNG)", data=byte_im, file_name=file_name_out, mime="image/png")
 
 
 # ============================================================
@@ -1112,12 +1186,17 @@ elif menu == "🗑 Corbeille (Archivées > 3 mois)":
         st.info("🗑 La corbeille est vide.")
     else:
         df_corbeille_display = df_corbeille.copy()
+
+
         def format_deposes_corbeille(val):
             try:
                 d = json.loads(val)
                 return ", ".join([f"{k}: {v}" for k, v in d.items()])
             except Exception:
                 return str(val)
+
+
         if "articles_déséposes" in df_corbeille_display.columns or "articles_deposes" in df_corbeille_display.columns:
-            df_corbeille_display["articles_deposes"] = df_corbeille_display["articles_deposes"].apply(format_deposes_corbeille)
+            df_corbeille_display["articles_deposes"] = df_corbeille_display["articles_deposes"].apply(
+                format_deposes_corbeille)
         st.dataframe(df_corbeille_display, use_container_width=True)
