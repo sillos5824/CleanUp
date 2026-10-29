@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import math
 import io
 import json
 import sqlite3
@@ -80,6 +81,9 @@ st.markdown("""
 DB_NAME = "pressing.db"
 NUMERO_WAVE = "0140994610"
 
+# Coordonnées exactes du Pressing extraites de votre fichier KML
+POS_PRESSING = (5.349918, -3.862636)
+
 
 # ============================================================
 # GESTION DE LA BASE DE DONNÉES & AUDIO
@@ -106,6 +110,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS commandes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date_depot TEXT,
+                heure_depot TEXT DEFAULT '00:00',
                 nom_client TEXT,
                 telephone_client TEXT,
                 genre_client TEXT,
@@ -124,7 +129,9 @@ def init_db():
                 longitude REAL,
                 adresse_livraison TEXT,
                 type_commande TEXT DEFAULT 'Comptoir',
-                service_choisi TEXT DEFAULT 'Lavage + Repassage'
+                service_choisi TEXT DEFAULT 'Lavage + Repassage',
+                frais_livraison REAL DEFAULT 0.0,
+                option_livraison_domicile TEXT DEFAULT 'Comptoir (Sans transport)'
             )
         """)
         c.execute("PRAGMA table_info(commandes)")
@@ -132,12 +139,15 @@ def init_db():
 
         migrations = [
             ("telephone_client", "TEXT DEFAULT ''"),
+            ("heure_depot", "TEXT DEFAULT '00:00'"),
             ("latitude", "REAL"),
             ("longitude", "REAL"),
             ("adresse_livraison", "TEXT"),
             ("type_commande", "TEXT DEFAULT 'Comptoir'"),
             ("service_choisi", "TEXT DEFAULT 'Lavage + Repassage'"),
-            ("mode_paiement", "TEXT DEFAULT 'Espèces'")
+            ("mode_paiement", "TEXT DEFAULT 'Espèces'"),
+            ("frais_livraison", "REAL DEFAULT 0.0"),
+            ("option_livraison_domicile", "TEXT DEFAULT 'Comptoir (Sans transport)'")
         ]
 
         for col_name, col_type in migrations:
@@ -162,7 +172,7 @@ def init_db():
 init_db()
 
 # ============================================================
-# GRILLE TARIFAIRE OFFICIELLE & CALCUL DU DEVIS
+# GRILLE TARIFAIRE OFFICIELLE & LOGISTIQUE
 # ============================================================
 
 TARIFS_BASE = {
@@ -189,6 +199,25 @@ def calculer_devis(articles_selectionnes: dict, service: str) -> float:
             prix_base = TARIFS_BASE[article]
             total += prix_base * qte * (1.0 if service == "Lavage + Repassage" else 0.75)
     return float(total)
+
+
+def calculer_distance_haversine(coord1, coord2):
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return round(R * c * 1.25, 2)  # Coefficient routier urbain
+
+
+def evaluer_frais_livraison(distance_km):
+    frais_base = 600
+    prix_par_km = 150
+    frais_minimum = 1000
+    calcul_total = frais_base + (distance_km * prix_par_km)
+    return max(frais_minimum, round(calcul_total, -2))
 
 
 def generer_qr_code_bytes(data_url: str, type_panneau: str = "comptoir") -> bytes:
@@ -302,7 +331,6 @@ elif page_url == "comptoir":
         st.info("🏬 Espace Comptoir Dédié")
     menu = "Nouvelle Commande (Comptoir)"
 else:
-    # Bannière Header élégante pour l'accueil Admin
     st.markdown("""
         <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 30px; border-radius: 14px; color: white; text-align: center; box-shadow: 0 10px 25px -5px rgba(30, 60, 114, 0.2); margin-bottom: 25px;">
             <h1 style="color: white; margin: 0; font-size: 2.5em; font-weight: 700;">🧺 CleanUp+</h1>
@@ -337,9 +365,8 @@ else:
             }
         )
         if nb_nouvelles > 0:
-            # Alerte visuelle clignotante dans la barre latérale
-            st.markdown(f'<p class="alerte-clignotante">🔔 {nb_nouvelles} commande(s) en attente !</p>', unsafe_allow_html=True)
-            # Déclenchement du signal sonore
+            st.markdown(f'<p class="alerte-clignotante">🔔 {nb_nouvelles} commande(s) en attente !</p>',
+                        unsafe_allow_html=True)
             jouer_son_notification()
 
 # ============================================================
@@ -374,10 +401,14 @@ if "Boîte de Réception" in menu:
                     st.write(f"⚙️ **Service :** {row.get('service_choisi', 'Lavage + Repassage')}")
                     if row["type_commande"] == "En ligne":
                         st.write(f"📍 **Adresse :** {row['adresse_livraison'] or 'Non précisée'}")
-                    st.write(f"📅 **Date :** {row['date_depot']}")
+                        st.write(
+                            f"🛵 **Option Logistique :** {row.get('option_livraison_domicile', 'Comptoir (Sans transport)')}")
+                        if row.get('frais_livraison', 0) > 0:
+                            st.write(f"🚚 **Frais de transport :** {row['frais_livraison']:,.0f} FCFA")
+                    st.write(f"📅 **Date & Heure dépôt :** {row['date_depot']} à {row.get('heure_depot', '00:00')}")
 
                 with col_b:
-                    st.write(f"💰 **Prix total :** {row['prix_total']:,} FCFA")
+                    st.write(f"💰 **Prix total (avec transport) :** {row['prix_total']:,} FCFA")
                     st.write(f"🏷️ **Modalité :** {row['modalite_paiement']} ({row['montant_verse']:,} versé)")
                     st.write(f"💳 **Paiement :** {row.get('mode_paiement', 'Espèces')}")
                     if row.get('mode_paiement') == 'Wave':
@@ -428,6 +459,7 @@ elif menu == "Nouvelle Commande (Comptoir)":
             telephone_client = st.text_input("Numéro de téléphone *")
             genre_client = st.selectbox("Genre du client", ["Homme", "Femme", "Autre"])
             date_depot = st.date_input("Date de dépôt", datetime.now())
+            heure_depot = st.time_input("Heure de dépôt", datetime.now().time())
         with col2:
             service_choisi = st.selectbox("Type de Service *", SERVICES)
             modalite = st.radio("Modalité de paiement *", MODALITES_PAIEMENT, horizontal=True)
@@ -495,18 +527,18 @@ elif menu == "Nouvelle Commande (Comptoir)":
                     c = conn.cursor()
                     c.execute("""
                         INSERT INTO commandes (
-                            date_depot, nom_client, telephone_client, genre_client,
+                            date_depot, heure_depot, nom_client, telephone_client, genre_client,
                             articles_deposes, articles_recuperes, prix_total, modalite_paiement,
                             mode_paiement, montant_verse, statut_traitement, quantite_restante_traitement,
                             date_recuperation, statut_commande, dans_corbeille, latitude,
-                            longitude, adresse_livraison, type_commande, service_choisi
+                            longitude, adresse_livraison, type_commande, service_choisi, frais_livraison, option_livraison_domicile
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, 'Comptoir', ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        str(date_depot), nom_client, telephone_client, genre_client,
+                        str(date_depot), heure_depot.strftime("%H:%M"), nom_client, telephone_client, genre_client,
                         json.dumps(articles_selectionnes), json.dumps(articles_recup_initial),
                         prix_calcule, modalite, mode_paiement, montant_verse, "En cours", total_articles,
-                        "-", "En cours", service_choisi
+                        "-", "En cours", 0, None, None, None, "Comptoir", service_choisi, 0.0, "Comptoir (Sans transport)"
                     ))
                     new_id = c.lastrowid
                     conn.commit()
@@ -532,7 +564,8 @@ elif menu == "📱 Commande en Ligne (Client)":
                 with c1:
                     st.write(f"**Client :** {cmd['nom_client']}")
                     st.write(f"**Téléphone :** {cmd['telephone_client']}")
-                    st.write(f"**Date :** {cmd['date_depot']}")
+                    st.write(f"**Date & Heure :** {cmd['date_depot']} à {cmd.get('heure_depot', '00:00')}")
+                    st.write(f"**Option Logistique :** {cmd.get('option_livraison_domicile', 'Comptoir')}")
                 with c2:
                     st.write(f"**Service :** {cmd.get('service_choisi', 'Lavage + Repassage')}")
                     st.write(f"**Total :** {cmd['prix_total']:,} FCFA")
@@ -547,7 +580,6 @@ elif menu == "📱 Commande en Ligne (Client)":
         else:
             st.error("❌ Commande introuvable.")
     else:
-        # --- CONSERVATION UNIQUE DE L'IMAGE DE LA FAMILLE HEUREUSE ---
         col_c1, col_c2 = st.columns([1, 1])
         with col_c1:
             st.markdown("### Bienvenue sur votre espace client")
@@ -559,13 +591,25 @@ elif menu == "📱 Commande en Ligne (Client)":
                 use_container_width=True
             )
 
-        st.header("📱 Passation de commande en ligne")
+        st.header("📱 Passation de commande en ligne & Logistique")
 
         if "user_lat" not in st.session_state: st.session_state.user_lat = 5.3599517
         if "user_lng" not in st.session_state: st.session_state.user_lng = -4.0082563
 
         with st.container(border=True):
-            st.subheader("📍 1. Localisation de livraison (Abidjan)")
+            st.subheader("📍 1. Localisation de livraison & Option Logistique")
+
+            option_logistique = st.radio(
+                "Choisissez votre option de transport :",
+                [
+                    "Récupération et livraison (Aller-Retour)",
+                    "Récupération simple (uniquement collecte chez vous)",
+                    "Livraison simple (uniquement retour chez vous)",
+                    "Aucun transport (Dépôt / Retrait au comptoir)"
+                ],
+                index=0
+            )
+
             col_m1, col_m2 = st.columns([1, 2])
             with col_m1:
                 if st.button("🌐 Obtenir ma position GPS"):
@@ -587,22 +631,49 @@ elif menu == "📱 Commande en Ligne (Client)":
                     st.session_state.user_lat = float(selected_adresse_data["lat"])
                     st.session_state.user_lng = float(selected_adresse_data["lon"])
 
+                distance_client = calculer_distance_haversine(POS_PRESSING,
+                                                              (st.session_state.user_lat, st.session_state.user_lng))
+                frais_unitaire = evaluer_frais_livraison(distance_client)
+
+                if option_logistique == "Récupération et livraison (Aller-Retour)":
+                    frais_livraison_client = frais_unitaire * 2
+                elif option_logistique in ["Récupération simple (uniquement collecte chez vous)",
+                                           "Livraison simple (uniquement retour chez vous)"]:
+                    frais_livraison_client = frais_unitaire
+                else:
+                    frais_livraison_client = 0.0
+
+                st.metric(label="Distance estimée (route)", value=f"{distance_client} km")
+                st.metric(label="Frais de transport appliqués",
+                          value=f"{frais_livraison_client:,.0f} FCFA".replace(",", " "))
+
             with col_m2:
-                m = folium.Map(location=[st.session_state.user_lat, st.session_state.user_lng], zoom_start=14)
-                folium.Marker([st.session_state.user_lat, st.session_state.user_lng], popup="Lieu de livraison").add_to(
-                    m)
+                centre_carte = [(POS_PRESSING[0] + st.session_state.user_lat) / 2,
+                                (POS_PRESSING[1] + st.session_state.user_lng) / 2]
+                m = folium.Map(location=centre_carte, zoom_start=13)
+
+                folium.Marker(POS_PRESSING, popup="Pressing CleanUp+",
+                              icon=folium.Icon(color="blue", icon="shopping-bag", prefix="fa")).add_to(m)
+                folium.Marker([st.session_state.user_lat, st.session_state.user_lng], popup="Lieu de livraison",
+                              icon=folium.Icon(color="green", icon="user", prefix="fa")).add_to(m)
+
+                if option_logistique != "Aucun transport (Dépôt / Retrait au comptoir)":
+                    folium.PolyLine([POS_PRESSING, [st.session_state.user_lat, st.session_state.user_lng]],
+                                    color="orange", weight=3, opacity=0.8).add_to(m)
+
                 map_data = st_folium(m, height=270, width="100%", key="map_client")
                 if map_data and map_data.get("last_clicked"):
                     st.session_state.user_lat = map_data["last_clicked"]["lat"]
                     st.session_state.user_lng = map_data["last_clicked"]["lng"]
 
         with st.container(border=True):
-            st.subheader("📋 2. Informations & Prestation")
+            st.subheader("📋 2. Informations, Heure de dépôt & Prestation")
             c1, c2 = st.columns(2)
             with c1:
                 nom_client = st.text_input("Nom & Prénom *")
                 telephone_client = st.text_input("Téléphone *")
                 genre_client = st.selectbox("Genre", ["Homme", "Femme", "Autre"])
+                heure_depot_client = st.time_input("Heure souhaitée / de dépôt", datetime.now().time())
             with c2:
                 service_choisi = st.selectbox("Prestation *", SERVICES)
                 modalite_client = st.radio("Modalité *", MODALITES_PAIEMENT, horizontal=True)
@@ -638,17 +709,21 @@ elif menu == "📱 Commande en Ligne (Client)":
                     if qte > 0: articles_client[item] = qte
 
         total_art = sum(articles_client.values())
-        prix_estime = calculer_devis(articles_client, service_choisi)
+        sous_total_estime = calculer_devis(articles_client, service_choisi)
+        prix_total_avec_livraison = sous_total_estime + frais_livraison_client
 
         if total_art > 0:
-            st.info(f"💡 Devis estimé : **{prix_estime:,.0f} FCFA** ({total_art} article(s))")
+            st.info(
+                f"💡 Sous-total articles : **{sous_total_estime:,.0f} FCFA** + Transport : **{frais_livraison_client:,.0f} FCFA** -> **Total général : {prix_total_avec_livraison:,.0f} FCFA**")
 
         if modalite_client == "Acompte":
             montant_verse_client = st.number_input("Montant versé (FCFA) *", min_value=0.0,
-                                                   max_value=float(prix_estime) if prix_estime > 0 else 0.0, value=0.0,
+                                                   max_value=float(
+                                                       prix_total_avec_livraison) if prix_total_avec_livraison > 0 else 0.0,
+                                                   value=0.0,
                                                    step=100.0, key="acompte_client")
         else:
-            montant_verse_client = prix_estime
+            montant_verse_client = prix_total_avec_livraison
 
         if st.button("Envoyer la commande en ligne", type="primary"):
             if not nom_client.strip():
@@ -662,18 +737,21 @@ elif menu == "📱 Commande en Ligne (Client)":
                     c = conn.cursor()
                     c.execute("""
                         INSERT INTO commandes (
-                            date_depot, nom_client, telephone_client, genre_client,
+                            date_depot, heure_depot, nom_client, telephone_client, genre_client,
                             articles_deposes, articles_recuperes, prix_total, modalite_paiement,
                             mode_paiement, montant_verse, statut_traitement, quantite_restante_traitement,
                             date_recuperation, statut_commande, dans_corbeille, latitude,
-                            longitude, adresse_livraison, type_commande, service_choisi
+                            longitude, adresse_livraison, type_commande, service_choisi, frais_livraison, option_livraison_domicile
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?, '-', 'En cours', 0, ?, ?, ?, 'En ligne', ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        datetime.now().strftime("%Y-%m-%d"), nom_client, telephone_client, genre_client,
-                        json.dumps(articles_client), json.dumps({k: 0 for k in articles_client}), prix_estime,
-                        modalite_client, mode_paiement_client, montant_verse_client, total_art,
-                        st.session_state.user_lat, st.session_state.user_lng, adresse_finale, service_choisi
+                        datetime.now().strftime("%Y-%m-%d"), heure_depot_client.strftime("%H:%M"), nom_client,
+                        telephone_client, genre_client,
+                        json.dumps(articles_client), json.dumps({k: 0 for k in articles_client}),
+                        prix_total_avec_livraison,
+                        modalite_client, mode_paiement_client, montant_verse_client, "En cours", total_art,
+                        "-", "En cours", 0, st.session_state.user_lat, st.session_state.user_lng, adresse_finale,
+                        "En ligne", service_choisi, frais_livraison_client, option_logistique
                     ))
                     last_id = c.lastrowid
                     conn.commit()
@@ -713,10 +791,14 @@ elif menu == "Mise à jour & Retraits":
             with col_info1:
                 st.markdown(f"👤 **Client :** {commande['nom_client']}")
                 st.markdown(f"📞 **Téléphone :** {commande['telephone_client']}")
-                st.markdown(f"📅 **Date dépôt :** {commande['date_depot']}")
+                st.markdown(
+                    f"📅 **Date & Heure dépôt :** {commande['date_depot']} à {commande.get('heure_depot', '00:00')}")
                 st.markdown(f"📱 **Origine :** {commande['type_commande']}")
+                st.markdown(f"🛵 **Option Logistique :** {commande.get('option_livraison_domicile', 'Comptoir')}")
                 if commande['type_commande'] == 'En ligne' and commande['adresse_livraison']:
                     st.markdown(f"📍 **Adresse :** {commande['adresse_livraison']}")
+                    if commande.get('frais_livraison', 0) > 0:
+                        st.markdown(f"🚚 **Frais de transport :** {commande['frais_livraison']:,.0f} FCFA")
             with col_info2:
                 st.markdown(f"💳 **Prix Total :** {prix_tot:,.0f} FCFA")
                 st.markdown(f"💵 **Déjà versé :** {montant_v:,.0f} FCFA")
@@ -730,9 +812,18 @@ elif menu == "Mise à jour & Retraits":
             st.markdown(
                 f"""<a href="{google_maps_url}" target="_blank" style="display:inline-block; background-color:#2a5298; color:white; padding:8px 16px; border-radius:6px; text-decoration:none; font-weight:bold; margin-bottom:12px;">🗺️ Ouvrir l'itinéraire client dans Google Maps</a>""",
                 unsafe_allow_html=True)
-            m_client = folium.Map(location=[lat_c, lon_c], zoom_start=15)
+
+            centre_carte = [(POS_PRESSING[0] + lat_c) / 2, (POS_PRESSING[1] + lon_c) / 2]
+            m_client = folium.Map(location=centre_carte, zoom_start=13)
+            folium.Marker(POS_PRESSING, popup="Pressing CleanUp+",
+                          icon=folium.Icon(color="blue", icon="shopping-bag", prefix="fa")).add_to(m_client)
             folium.Marker([lat_c, lon_c], popup=f"Client: {commande['nom_client']}",
-                          icon=folium.Icon(color="blue", icon="user")).add_to(m_client)
+                          icon=folium.Icon(color="green", icon="user", prefix="fa")).add_to(m_client)
+
+            if commande.get('option_livraison_domicile') != "Aucun transport (Dépôt / Retrait au comptoir)":
+                folium.PolyLine([POS_PRESSING, [lat_c, lon_c]], color="orange", weight=2.5, opacity=0.8).add_to(
+                    m_client)
+
             st_folium(m_client, height=250, width="100%", key=f"map_retrait_{commande_id}")
 
         with st.container(border=True):
@@ -833,8 +924,10 @@ elif menu == "Historique des Commandes":
         df_display["Articles Déposés"] = df_display["articles_deposes"].apply(
             lambda val: ", ".join([f"{k}: {v}" for k, v in json.loads(val).items()]) if pd.notna(val) else "")
         st.dataframe(df_display[
-                         ["id", "date_depot", "type_commande", "nom_client", "telephone_client", "service_choisi",
-                          "Articles Déposés", "prix_total", "modalite_paiement", "statut_commande"]],
+                         ["id", "date_depot", "heure_depot", "type_commande", "nom_client", "telephone_client",
+                          "service_choisi",
+                          "Articles Déposés", "prix_total", "frais_livraison", "option_livraison_domicile",
+                          "modalite_paiement", "statut_commande"]],
                      use_container_width=True)
 
 # ============================================================
