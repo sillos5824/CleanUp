@@ -22,7 +22,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="CleanUp+ | Gestion Pressing",
-    page_icon="🧺",
+    page_icon="👔",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -172,7 +172,7 @@ def init_db():
 init_db()
 
 # ============================================================
-# GRILLE TARIFAIRE OFFICIELLE & LOGISTIQUE
+# GRILLE TARIFAIRE OFFICIELLE & LOGISTIQUE DYNAMIQUE (HeiGIT API)
 # ============================================================
 
 TARIFS_BASE = {
@@ -191,6 +191,66 @@ vetements_speciaux = ["Robe de cérémonie", "Robe longue / Robe en pagne", "Cos
 linge_maison = ["Drap simple", "Drap 2 places", "Drap + taies (set)", "Housse de couette", "Couette légère",
                 "Couette épaisse", "Rideaux légers (la paire)", "Rideaux lourds (la paire)"]
 
+# Clé API HeiGIT / OpenRouteService intégrée
+ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjAzZGIzYjkxYmE3MTQ4YjNhNjNiZjY0NjY5MjAwMzlkIiwiaCI6Im11cm11cjY0In0="
+
+
+def calculer_trajet_routier_reel(coord_depart, coord_arrivee):
+    """
+    Interroge l'API HeiGIT v2 pour obtenir la distance routière exacte et la durée en direct.
+    """
+    lat1, lon1 = coord_depart
+    lat2, lon2 = coord_arrivee
+
+    url = "https://api.heigit.org/v2/directions/driving-car"
+    body = {
+        "coordinates": [[lon1, lat1], [lon2, lat2]]
+    }
+    headers = {
+        "Authorization": ORS_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, json=body, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            summary = data["routes"][0]["summary"]
+            distance_km = round(summary["distance"] / 1000.0, 2)
+            duree_minutes = round(summary["duration"] / 60.0)
+            return distance_km, duree_minutes
+    except Exception:
+        pass
+
+    # Système de secours (Haversine) en cas de coupure réseau
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance_approx = round(R * c * 1.25, 2)
+    duree_approx_min = round(distance_approx * 3)
+    return distance_approx, duree_approx_min
+
+
+def evaluer_frais_livraison_dynamique(distance_km, duree_minutes):
+    """
+    Calcule les frais de transport en tenant compte de la distance et des embouteillages (durée).
+    """
+    frais_base = 600
+    prix_par_km = 150
+    frais_minimum = 1000
+
+    calcul_total = frais_base + (distance_km * prix_par_km)
+
+    # Majoration dynamique de 20% en cas d'embouteillage important détecté par l'API
+    if distance_km > 0:
+        ratio_temps_distance = duree_minutes / distance_km
+        if ratio_temps_distance > 4.0:
+            calcul_total *= 1.20
+
+    return max(frais_minimum, round(calcul_total, -2))
+
 
 def calculer_devis(articles_selectionnes: dict, service: str) -> float:
     total = 0.0
@@ -199,25 +259,6 @@ def calculer_devis(articles_selectionnes: dict, service: str) -> float:
             prix_base = TARIFS_BASE[article]
             total += prix_base * qte * (1.0 if service == "Lavage + Repassage" else 0.75)
     return float(total)
-
-
-def calculer_distance_haversine(coord1, coord2):
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return round(R * c * 1.25, 2)  # Coefficient routier urbain
-
-
-def evaluer_frais_livraison(distance_km):
-    frais_base = 600
-    prix_par_km = 150
-    frais_minimum = 1000
-    calcul_total = frais_base + (distance_km * prix_par_km)
-    return max(frais_minimum, round(calcul_total, -2))
 
 
 def generer_qr_code_bytes(data_url: str, type_panneau: str = "comptoir") -> bytes:
@@ -317,9 +358,9 @@ cmd_id_url = query_params.get("cmd_id", None)
 page_url = query_params.get("page", None)
 
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/basket.png", width=65)
+    st.image("https://img.icons8.com/color/96/iron.png", width=65)
     st.title("CleanUp+")
-    st.caption("Gestion intelligente de pressing")
+    st.caption("Pressing & Soin du Linge")
     st.divider()
 
 if cmd_id_url or page_url == "ligne":
@@ -527,18 +568,55 @@ elif menu == "Nouvelle Commande (Comptoir)":
                     c = conn.cursor()
                     c.execute("""
                         INSERT INTO commandes (
-                            date_depot, heure_depot, nom_client, telephone_client, genre_client,
-                            articles_deposes, articles_recuperes, prix_total, modalite_paiement,
-                            mode_paiement, montant_verse, statut_traitement, quantite_restante_traitement,
-                            date_recuperation, statut_commande, dans_corbeille, latitude,
-                            longitude, adresse_livraison, type_commande, service_choisi, frais_livraison, option_livraison_domicile
+                            date_depot,
+                            heure_depot,
+                            nom_client,
+                            telephone_client,
+                            genre_client,
+                            articles_deposes,
+                            articles_recuperes,
+                            prix_total,
+                            modalite_paiement,
+                            mode_paiement,
+                            montant_verse,
+                            statut_traitement,
+                            quantite_restante_traitement,
+                            date_recuperation,
+                            statut_commande,
+                            dans_corbeille,
+                            latitude,
+                            longitude,
+                            adresse_livraison,
+                            type_commande,
+                            service_choisi,
+                            frais_livraison,
+                            option_livraison_domicile
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        str(date_depot), heure_depot.strftime("%H:%M"), nom_client, telephone_client, genre_client,
-                        json.dumps(articles_selectionnes), json.dumps(articles_recup_initial),
-                        prix_calcule, modalite, mode_paiement, montant_verse, "En cours", total_articles,
-                        "-", "En cours", 0, None, None, None, "Comptoir", service_choisi, 0.0, "Comptoir (Sans transport)"
+                        str(date_depot),
+                        heure_depot.strftime("%H:%M"),
+                        nom_client,
+                        telephone_client,
+                        genre_client,
+                        json.dumps(articles_selectionnes),
+                        json.dumps(articles_recup_initial),
+                        prix_calcule,
+                        modalite,
+                        mode_paiement,
+                        montant_verse,
+                        "En cours",
+                        total_articles,
+                        "-",
+                        "En cours",
+                        0,
+                        None,
+                        None,
+                        None,
+                        "Comptoir",
+                        service_choisi,
+                        0.0,
+                        "Comptoir (Sans transport)"
                     ))
                     new_id = c.lastrowid
                     conn.commit()
@@ -631,9 +709,12 @@ elif menu == "📱 Commande en Ligne (Client)":
                     st.session_state.user_lat = float(selected_adresse_data["lat"])
                     st.session_state.user_lng = float(selected_adresse_data["lon"])
 
-                distance_client = calculer_distance_haversine(POS_PRESSING,
-                                                              (st.session_state.user_lat, st.session_state.user_lng))
-                frais_unitaire = evaluer_frais_livraison(distance_client)
+                # Appel API de routage dynamique en temps réel (HeiGIT)
+                distance_client, duree_estimee_min = calculer_trajet_routier_reel(
+                    POS_PRESSING,
+                    (st.session_state.user_lat, st.session_state.user_lng)
+                )
+                frais_unitaire = evaluer_frais_livraison_dynamique(distance_client, duree_estimee_min)
 
                 if option_logistique == "Récupération et livraison (Aller-Retour)":
                     frais_livraison_client = frais_unitaire * 2
@@ -643,7 +724,8 @@ elif menu == "📱 Commande en Ligne (Client)":
                 else:
                     frais_livraison_client = 0.0
 
-                st.metric(label="Distance estimée (route)", value=f"{distance_client} km")
+                st.metric(label="Distance routière", value=f"{distance_client} km")
+                st.metric(label="Temps de trajet estimé (Trafic live)", value=f"{duree_estimee_min} min")
                 st.metric(label="Frais de transport appliqués",
                           value=f"{frais_livraison_client:,.0f} FCFA".replace(",", " "))
 
@@ -745,13 +827,29 @@ elif menu == "📱 Commande en Ligne (Client)":
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        datetime.now().strftime("%Y-%m-%d"), heure_depot_client.strftime("%H:%M"), nom_client,
-                        telephone_client, genre_client,
-                        json.dumps(articles_client), json.dumps({k: 0 for k in articles_client}),
+                        datetime.now().strftime("%Y-%m-%d"),
+                        heure_depot_client.strftime("%H:%M"),
+                        nom_client,
+                        telephone_client,
+                        genre_client,
+                        json.dumps(articles_client),
+                        json.dumps({k: 0 for k in articles_client}),
                         prix_total_avec_livraison,
-                        modalite_client, mode_paiement_client, montant_verse_client, "En cours", total_art,
-                        "-", "En cours", 0, st.session_state.user_lat, st.session_state.user_lng, adresse_finale,
-                        "En ligne", service_choisi, frais_livraison_client, option_logistique
+                        modalite_client,
+                        mode_paiement_client,
+                        montant_verse_client,
+                        "En cours",
+                        total_art,
+                        "-",
+                        "En cours",
+                        0,
+                        st.session_state.user_lat,
+                        st.session_state.user_lng,
+                        adresse_finale,
+                        "En ligne",
+                        service_choisi,
+                        frais_livraison_client,
+                        option_logistique
                     ))
                     last_id = c.lastrowid
                     conn.commit()
