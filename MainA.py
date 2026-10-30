@@ -30,14 +30,32 @@ st.set_page_config(
 # Injection de styles CSS avancés (incluant l'animation de clignotement)
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Baloo+2:wght@600;700;800&display=swap');
 
         html, body, [class*="css"] {
-            font-family: 'Plus Jakarta+ Sans', sans-serif;
+            font-family: 'Plus Jakarta Sans', 'Baloo 2', sans-serif;
         }
 
         .stApp {
-            background-color: #f8fafc;
+            background: linear-gradient(125deg, #f5f7ff 0%, #fdf4ff 45%, #fff7ed 100%) !important;
+        }
+
+        /* Halos décoratifs flous en arrière-plan */
+        .stApp::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background-image:
+                radial-gradient(circle at 12% 15%, rgba(124, 58, 237, 0.08) 0 150px, transparent 151px),
+                radial-gradient(circle at 88% 10%, rgba(6, 182, 212, 0.09) 0 120px, transparent 121px),
+                radial-gradient(circle at 80% 85%, rgba(236, 72, 153, 0.08) 0 170px, transparent 171px),
+                radial-gradient(circle at 18% 82%, rgba(249, 115, 22, 0.09) 0 115px, transparent 116px);
+        }
+
+        header[data-testid="stHeader"] {
+            background: transparent;
         }
 
         /* Animation de clignotement pour les alertes */
@@ -52,28 +70,228 @@ st.markdown("""
             font-weight: bold;
         }
 
-        /* Boutons stylisés */
-        .stButton>button {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            border-radius: 8px;
-            padding: 0.5rem 1rem;
-            font-weight: 600;
-            border: none;
-            box-shadow: 0 4px 6px -1px rgba(30, 60, 114, 0.2);
-            transition: all 0.3s ease;
+        /* Ruban principal animé (dégradé violet -> rose -> corail) */
+        @keyframes ruban-arc-en-ciel {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
-        .stButton>button:hover {
-            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
-            box-shadow: 0 6px 12px -2px rgba(30, 60, 114, 0.3);
-            transform: translateY(-1px);
+        @keyframes flottement {
+            0%, 100% { transform: translateY(0) rotate(-4deg); }
+            50% { transform: translateY(-8px) rotate(4deg); }
+        }
+        .ruban-hero {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(120deg, #4f46e5, #7c3aed, #ec4899, #f97316, #f7b731, #4f46e5);
+            background-size: 300% 300%;
+            animation: ruban-arc-en-ciel 12s ease infinite;
+            padding: 34px 30px;
+            border-radius: 22px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 15px 40px -10px rgba(124, 58, 237, 0.45);
+            margin-bottom: 25px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+        }
+        .ruban-hero h1 {
+            color: white;
+            margin: 0;
+            font-size: 2.6em;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+        }
+        .ruban-hero p {
+            font-size: 1.12em;
+            margin-top: 10px;
+            opacity: 0.95;
+        }
+        .pastilles-hero {
+            margin-top: 14px;
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            padding: 6px 22px;
+            border-radius: 999px;
+            font-size: 0.95em;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        .bulle-deco {
+            position: absolute;
+            font-size: 1.6em;
+            opacity: 0.55;
+            animation: flottement 5s ease-in-out infinite;
+        }
+        .bulle-deco.b1 { top: 12%; left: 4%; animation-delay: 0s; }
+        .bulle-deco.b2 { bottom: 14%; right: 5%; animation-delay: 1.2s; }
+        .bulle-deco.b3 { top: 55%; left: 9%; animation-delay: 2.1s; font-size: 1.2em; }
+        .bulle-deco.b4 { top: 20%; right: 10%; animation-delay: 0.7s; font-size: 1.3em; }
+
+        /* Petite décoration de la barre latérale */
+        .ruban-lateral {
+            text-align: center;
+            background: linear-gradient(90deg, rgba(124, 58, 237, 0.12), rgba(236, 72, 153, 0.12), rgba(249, 115, 22, 0.12));
+            border-radius: 999px;
+            padding: 4px 10px;
+            margin: 6px 0 2px 0;
+            letter-spacing: 6px;
         }
 
-        /* Champs de saisie homogènes */
+        /* Boutons stylisés — dégradé violet, indigo et rose */
+        .stButton>button {
+            background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 55%, #ec4899 100%);
+            color: white;
+            border-radius: 999px;
+            padding: 0.55rem 1.3rem;
+            font-weight: 700;
+            border: none;
+            box-shadow: 0 5px 16px -2px rgba(124, 58, 237, 0.45);
+            transition: all 0.3s ease;
+            letter-spacing: 0.2px;
+        }
+        .stButton>button:hover {
+            background: linear-gradient(135deg, #ec4899 0%, #f97316 55%, #7c3aed 100%);
+            box-shadow: 0 9px 24px -4px rgba(236, 72, 153, 0.55);
+            transform: translateY(-2px) scale(1.02);
+        }
+
+        /* Boutons principaux (actions clés) en corail-rose */
+        .stButton>button[kind="primary"], button[kind="primary"] {
+            background: linear-gradient(135deg, #f97316 0%, #ec4899 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 999px !important;
+            font-weight: 700 !important;
+        }
+        button[kind="primary"]:hover { filter: brightness(1.08); }
+
+        /* Bouton d'envoi de formulaire */
+        div[data-testid="stFormSubmitButton"] button {
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 999px !important;
+            font-weight: 700 !important;
+        }
+
+        /* Champs de saisie homogènes + focus coloré */
         .stTextInput>div>div>input, .stSelectbox>div>div>select, .stTextArea>div>div>textarea {
-            border-radius: 8px;
-            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            border: 1.5px solid #e2e8f0;
             background-color: #ffffff;
+            transition: all 0.25s ease;
+        }
+        .stTextInput>div>div>input:focus, .stSelectbox>div>div>select:focus,
+        .stTextArea>div>div>textarea:focus {
+            border-color: #7c3aed !important;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.16) !important;
+        }
+
+        /* Barre latérale parfumée */
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #eef2ff 0%, #fdf2f8 60%, #fff7ed 100%);
+        }
+        section[data-testid="stSidebar"] h1 {
+            background: linear-gradient(90deg, #4f46e5, #ec4899);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Cartes & conteneurs */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.88);
+            box-shadow: 0 8px 24px -8px rgba(79, 70, 229, 0.18);
+        }
+
+        /* Titres de section en dégradé */
+        main h1, main h2, main h3 {
+            background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 45%, #ec4899 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Cartes de mesures (metrics) colorées */
+        div[data-testid="stMetric"] {
+            background: white;
+            border-radius: 16px;
+            padding: 14px 18px;
+            box-shadow: 0 8px 20px -8px rgba(79, 70, 229, 0.25);
+            border: 1px solid rgba(124, 58, 237, 0.14);
+            border-top: 5px solid #7c3aed;
+        }
+        div[data-testid="stMetric"] label, div[data-testid="stMetricLabel"] p {
+            color: #4f46e5 !important;
+            font-weight: 700;
+        }
+
+        /* Onglets en pilules colorées */
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        .stTabs [data-baseweb="tab"] {
+            background: #eef2ff;
+            border: 1.5px solid #e0e7ff;
+            border-bottom: none;
+            border-radius: 14px 14px 0 0;
+            padding: 8px 20px;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        .stTabs [data-baseweb="tab"]:hover { background: #e0e7ff; }
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(135deg, #4f46e5, #ec4899) !important;
+            color: white !important;
+            border-color: transparent !important;
+        }
+
+        /* Expanders élégants */
+        details[data-testid="stExpander"] {
+            border-radius: 14px;
+            border: 1.5px solid #f0abfc;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 14px -6px rgba(192, 38, 211, 0.25);
+        }
+        details[data-testid="stExpander"] summary { color: #7c3aed; font-weight: 600; }
+        details[data-testid="stExpander"] summary:hover { color: #ec4899; }
+
+        /* Alertes aux coins arrondis */
+        div[data-testid="stAlert"] { border-radius: 14px; }
+
+        /* Tableaux arrondis */
+        div[data-testid="stDataFrame"] {
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 6px 18px -8px rgba(79, 70, 229, 0.2);
+        }
+
+        /* Pied de page décoratif */
+        .pied-deco {
+            text-align: center;
+            margin-top: 30px;
+            padding: 18px;
+            background: linear-gradient(90deg, rgba(79, 70, 229, 0.08), rgba(236, 72, 153, 0.08), rgba(249, 115, 22, 0.08));
+            border-radius: 18px;
+            color: #475569;
+            font-size: 0.95em;
+        }
+        .pied-deco .ligne-pied {
+            margin-top: 6px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #4f46e5, #ec4899, #f97316);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Barre de défilement colorée */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #7c3aed, #ec4899);
+            border-radius: 8px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -272,16 +490,26 @@ def generer_qr_code_bytes(data_url: str, type_panneau: str = "comptoir") -> byte
     draw = ImageDraw.Draw(panel)
 
     if type_panneau == "comptoir":
-        primary_color = (255, 140, 0)
+        primary_color = (249, 115, 22)
+        accent_color = (236, 72, 153)
         btn_text = "AU COMPTOIR"
         sub_text = "Scannez pour commander au comptoir"
     else:
-        primary_color = (26, 150, 225)
+        primary_color = (79, 70, 229)
+        accent_color = (6, 182, 212)
         btn_text = "EN LIGNE"
         sub_text = "Scannez pour commander en ligne"
 
     text_dark = (15, 23, 42)
     draw.rounded_rectangle([30, 30, width - 30, height - 30], radius=40, outline=primary_color, width=6)
+    draw.rounded_rectangle([44, 44, width - 44, height - 44], radius=32, outline=accent_color, width=2)
+    # Confettis décoratifs : petits points colorés autour du panneau
+    for (cx, cy, r, col) in [
+        (70, 70, 7, accent_color), (width - 70, 70, 7, accent_color),
+        (70, height - 70, 7, accent_color), (width - 70, height - 70, 7, accent_color),
+        (width // 2, 58, 6, primary_color), (width // 2, height - 58, 6, primary_color),
+    ]:
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=col)
 
     try:
         font_title = ImageFont.truetype("arial.ttf", 55)
@@ -361,6 +589,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/iron.png", width=65)
     st.title("CleanUp+")
     st.caption("Pressing & Soin du Linge")
+    st.markdown('<div class="ruban-lateral">🫧 ✦ ✨ ✦ 🫧</div>', unsafe_allow_html=True)
     st.divider()
 
 if cmd_id_url or page_url == "ligne":
@@ -373,9 +602,14 @@ elif page_url == "comptoir":
     menu = "Nouvelle Commande (Comptoir)"
 else:
     st.markdown("""
-        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 30px; border-radius: 14px; color: white; text-align: center; box-shadow: 0 10px 25px -5px rgba(30, 60, 114, 0.2); margin-bottom: 25px;">
-            <h1 style="color: white; margin: 0; font-size: 2.5em; font-weight: 700;">🧺 CleanUp+</h1>
-            <p style="font-size: 1.1em; margin-top: 8px; opacity: 0.95;">Tableau de bord et pilotage de votre activité</p>
+        <div class="ruban-hero">
+            <span class="bulle-deco b1">🫧</span>
+            <span class="bulle-deco b2">✨</span>
+            <span class="bulle-deco b3">🧼</span>
+            <span class="bulle-deco b4">👔</span>
+            <h1 style="color: white; margin: 0; font-size: 2.6em; font-weight: 800;">🧺 CleanUp+</h1>
+            <p style="font-size: 1.12em; margin-top: 10px; opacity: 0.95;">Tableau de bord et pilotage de votre activité</p>
+            <div class="pastilles-hero">✦ LAVAGE &nbsp;•&nbsp; REPASSAGE &nbsp;•&nbsp; LIVRAISON ✦</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1112,3 +1346,15 @@ elif menu == "🗑 Corbeille":
         st.info("🗑 La corbeille est vide.")
     else:
         st.dataframe(df_corbeille, use_container_width=True)
+
+
+# ============================================================
+# PIED DE PAGE DÉCORATIF
+# ============================================================
+
+st.markdown("""
+    <div class="pied-deco">
+        <div>✨ 🫧 CleanUp+ — Votre linge mérite le meilleur 🫧 ✨</div>
+        <div class="ligne-pied">👔 Lavage &nbsp;•&nbsp; 🧼 Soin du linge &nbsp;•&nbsp; 🛵 Livraison &nbsp;•&nbsp; 📲 Suivi QR</div>
+    </div>
+""", unsafe_allow_html=True)
